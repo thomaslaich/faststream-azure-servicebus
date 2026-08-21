@@ -1,0 +1,132 @@
+# Configuration reference: https://docs.astral.sh/ruff/settings/
+
+fix = true
+preview = true
+
+line-length = 90
+indent-width = 4
+
+target-version = "py310"
+
+include = ["src/**/*.py", "tests/**/*.py", "docs/**/*.py", "pyproject.toml"]
+
+exclude = ["tests/faststream"]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = false
+
+[lint]
+select = ["ALL"]
+
+ignore = [
+  "A",
+  "FA",
+  "TD",
+  "FIX",
+  "SLOT",
+  "ARG",
+  "EXE",
+
+  "ASYNC109",
+  "ANN401",
+  "COM812",
+  "ISC001",
+  "TRY301",
+  "S101",
+  "SLF001",
+  "PLR0911",
+  "PLR0912",
+  "PLR0913",
+  "PLR2004",
+  "PYI036",
+  "PYI051",
+  "G004",
+
+  "E501", # line too long, handled by the formatter
+  "C901", # too complex
+
+  # preview
+  "CPY",
+  "PLC0415",
+  "PLC2701",
+  "PLC2801",
+  "PLR6301",
+  "PLW1641",
+  "RUF029",
+  "RUF067",  # `__init__` should only contain re-exports; tests/__init__ merges __path__
+
+  # pep8-naming
+  "N817", # CamelCase `*` imported as acronym `*`
+
+  # pydocstyle
+  "D100",
+  "D101",
+  "D102",
+  "D103",
+  "D104",
+  "D105",
+  "D106",
+  "D107",
+  "D205",
+  "DOC201",
+  "DOC202",
+  "DOC402",
+  "DOC501",
+  "DOC502",
+
+  "FBT",
+  "PLW2901",
+  "PLR0917",
+]
+
+[lint.per-file-ignores]
+"**/_compat.py" = ["PYI063", "PLW3201"]
+
+"tests/**/*.py" = [
+  "ANN",
+  "S",
+  "PLR0904",
+  "PLR0914",
+  "PLC1901",
+  # Handler annotations are resolved at runtime by FastDepends, so their
+  # imports cannot move into a type-checking block.
+  "TC",
+]
+
+# Standalone dev script, not an importable test module.
+"tests/infra/*.py" = ["INP001", "T201"]
+
+"docs/*.py" = ["ALL"]
+
+[lint.isort]
+case-sensitive = true
+combine-as-imports = true
+force-wrap-aliases = true
+
+[lint.pydocstyle]
+convention = "google"
+ignore-decorators = ["typing.overload"]
+
+[lint.flake8-bugbear]
+extend-immutable-calls = [
+  "faststream.Header",
+  "faststream.Path",
+  "faststream.Depends",
+  "faststream.Context",
+  "faststream.params.Header",
+  "faststream.params.Path",
+  "faststream.params.Depends",
+  "faststream.params.Context",
+  "pydantic.Field",
+  "fastapi.Depends",
+  "fastapi.Header",
+]
+
+[lint.flake8-pytest-style]
+fixture-parentheses = true
+mark-parentheses = true
+parametrize-names-type = "tuple"
+parametrize-values-type = "tuple"
+parametrize-values-row-type = "tuple"

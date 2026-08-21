@@ -1,0 +1,26 @@
+services:
+  servicebus:
+    image: mcr.microsoft.com/azure-messaging/servicebus-emulator:latest
+    volumes:
+      - "./tests/infra/servicebus-config.json:/ServiceBus_Emulator/ConfigFiles/Config.json:ro"
+    ports:
+      - "5672:5672"
+    environment:
+      SQL_SERVER: sqledge
+      MSSQL_SA_PASSWORD: "Emulator!Passw0rd" # pragma: allowlist secret
+      ACCEPT_EULA: "Y"
+      SQL_WAIT_INTERVAL: "10"
+    depends_on:
+      - sqledge
+    security_opt:
+      - no-new-privileges:true
+  # Required backing store for the emulator. Ships native arm64 and amd64
+  # manifests — do not pin `platform`, the amd64 image segfaults under emulation
+  # on Apple Silicon.
+  sqledge:
+    image: mcr.microsoft.com/azure-sql-edge:latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Emulator!Passw0rd" # pragma: allowlist secret
+    security_opt:
+      - no-new-privileges:true

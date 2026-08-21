@@ -1,0 +1,32 @@
+name: Release
+run-name: Release faststream-azure-servicebus ${{ github.event.release.tag_name }}
+on:
+  release:
+    types:
+      - published
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  publish:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Fetch full history and tags so uv-dynamic-versioning can derive the
+          # package version from the release git tag.
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+      - name: Configure devenv cache
+        uses: cachix/cachix-action@v16
+        with:
+          name: devenv
+      - name: Install devenv
+        run: nix profile add nixpkgs#devenv
+      - name: Build and smoke test
+        run: devenv shell -- just release-ci
+      - name: Publish to PyPI
+        run: devenv shell -- uv publish --trusted-publishing always

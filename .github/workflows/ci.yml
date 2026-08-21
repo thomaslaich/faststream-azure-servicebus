@@ -1,0 +1,76 @@
+name: CI
+on:
+  push:
+    branches: [main]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+      - name: Configure devenv cache
+        uses: cachix/cachix-action@v16
+        with:
+          name: devenv
+      - name: Install devenv
+        run: nix profile add nixpkgs#devenv
+      - run: devenv shell -- just ci
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Start the Service Bus emulator
+        run: docker compose up -d --wait
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: latest
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --locked --group test
+      - run: uv run just test-ci -vv
+      - name: Dump emulator logs on failure
+        if: failure()
+        run: docker compose logs servicebus
+      - name: Rename coverage file
+        run: mkdir coverage && mv .coverage coverage/.coverage.py${{ matrix.python-version }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: .coverage.py${{ matrix.python-version }}
+          path: coverage
+          if-no-files-found: error
+          include-hidden-files: true
+  coverage:
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: latest
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: uv sync --locked --group test
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: .coverage*
+          path: coverage
+          merge-multiple: true
+      - run: uv run just coverage-ci
