@@ -5,11 +5,13 @@ services:
       - "./tests/infra/servicebus-config.json:/ServiceBus_Emulator/ConfigFiles/Config.json:ro"
     ports:
       - "5672:5672"
+      - "5300:5300"
     environment:
       SQL_SERVER: sqledge
       MSSQL_SA_PASSWORD: "Emulator!Passw0rd" # pragma: allowlist secret
       ACCEPT_EULA: "Y"
       SQL_WAIT_INTERVAL: "10"
+      EMULATOR_HTTP_PORT: "5300"
     depends_on:
       - sqledge
     security_opt:

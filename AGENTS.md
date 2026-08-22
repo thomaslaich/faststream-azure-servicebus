@@ -29,6 +29,7 @@ list recipes. Key ones:
 | `just check` | Local static analysis: treefmt, lint, typecheck. |
 | `just ci` | CI static analysis: treefmt check, GitHub-formatted lint, typecheck. |
 | `just up` / `just down` | Start / stop the Service Bus emulator stack. |
+| `just example` | Publish and consume one message against the emulator. |
 | `just test` | Run the connected pytest suite with xdist. |
 | `just test-cov` | Run tests with a local coverage report. |
 | `just test-ci` | CI test recipe with coverage data but no terminal report. |
@@ -57,6 +58,10 @@ manually with `devenv shell` before invoking the recipes.
 - Tests are connected tests. Start the emulator with `just up` before running
   `just test` locally, unless `SERVICEBUS_CONNECTION_STRING` points at a real
   namespace.
+- Devenv supervises the emulator through process-compose. Docker Compose remains
+  the two-container implementation behind `devenv up` / `just up`.
+- Local `just test` and `just example` recipes acquire the emulator and release
+  it only when they started it; they preserve an already-running dev session.
 - The emulator cannot create entities at runtime. Tests lease names from the
   fixed pool in `tests/infra/servicebus-config.json`; regenerate it with
   `just gen-config` after changing queue/topic counts.

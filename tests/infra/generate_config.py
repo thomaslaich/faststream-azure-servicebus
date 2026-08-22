@@ -18,6 +18,7 @@ NAMESPACE = "sbemulatorns"
 QUEUE_COUNT = 24
 TOPIC_COUNT = 6
 SUBSCRIPTIONS_PER_TOPIC = 2
+EXAMPLE_QUEUE = "example-queue"
 
 # Deliberately short so lock-expiry behaviour is testable without slow tests.
 # PT5S is the service minimum.
@@ -57,7 +58,7 @@ SUBSCRIPTION_PROPERTIES = {
 
 
 def build_config() -> dict[str, object]:
-    queues = []
+    queues = [{"Name": EXAMPLE_QUEUE, "Properties": dict(QUEUE_PROPERTIES)}]
     for index in range(QUEUE_COUNT):
         properties = dict(QUEUE_PROPERTIES)
         if index < SHORT_LOCK_QUEUE_COUNT:

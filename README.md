@@ -64,11 +64,20 @@ cd faststream-azure-servicebus
 direnv allow                 # or: devenv shell
 
 just up                      # Service Bus emulator + its SQL Edge backing store
+just example                 # publish and consume one message
 just test
 just check                   # treefmt, ruff check, ty
 ```
 
 `just --list` shows the rest.
+
+The emulator is declared as a devenv process and supervised by process-compose.
+`just test` and `just example` start it when necessary, wait for the management
+health endpoint, and stop it afterward only when they started it. `just up` and
+`just down` manage a persistent background instance. Run `devenv up` or
+`process-compose` directly to keep the TUI and process logs in the foreground;
+use `process-compose attach` for an instance started in the background. The
+runnable source for `just example` is in [`examples/basic.py`](examples/basic.py).
 
 The nightly workflow installs FastStream from upstream `main` so private-API drift
 shows up early without vendoring FastStream in this repository.

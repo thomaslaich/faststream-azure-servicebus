@@ -49,34 +49,39 @@
 # start the Service Bus emulator and its SQL Edge backing store
 [group('infra')]
 @up:
-    docker compose up -d --wait
+    bash scripts/emulator start
 
 # stop the emulator
 [group('infra')]
 @down:
-    docker compose down -v
+    bash scripts/emulator stop
 
 # tail the emulator logs
 [group('infra')]
 @logs:
-    docker compose logs -f servicebus
+    process-compose attach
 
 # regenerate the emulator's entity pool (tests/infra/servicebus-config.json)
 [group('infra')]
 @gen-config:
     python tests/infra/generate_config.py
 
+# publish and consume one message using the local emulator
+[group('example')]
+@example:
+    bash scripts/emulator run python examples/basic.py
+
 # run the test suite
 # `-n 2`, not `-n auto`: the emulator caps a namespace at 10 concurrent
 # connections, and each worker holds several.
 [group('test')]
 @test *args:
-    pytest -n 2 {{ args }}
+    bash scripts/emulator run pytest -n 2 {{ args }}
 
 # run the tests with a coverage report
 [group('test')]
 @test-cov:
-    pytest -n 2 --cov --cov-report=term --cov-report=html
+    bash scripts/emulator run pytest -n 2 --cov --cov-report=term --cov-report=html
 
 # Smoke test the built wheel in an isolated environment.
 [group('build & publish')]

@@ -8,7 +8,13 @@ indent-width = 4
 
 target-version = "py310"
 
-include = ["src/**/*.py", "tests/**/*.py", "docs/**/*.py", "pyproject.toml"]
+include = [
+  "src/**/*.py",
+  "tests/**/*.py",
+  "examples/**/*.py",
+  "docs/**/*.py",
+  "pyproject.toml",
+]
 
 exclude = ["tests/faststream"]
 
@@ -97,6 +103,8 @@ ignore = [
 
 # Standalone dev script, not an importable test module.
 "tests/infra/*.py" = ["INP001", "T201"]
+
+"examples/**/*.py" = ["INP001", "T201"]
 
 "docs/*.py" = ["ALL"]
 
