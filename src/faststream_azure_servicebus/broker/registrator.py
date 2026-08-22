@@ -26,7 +26,7 @@ class ServiceBusRegistrator(
 
     # Deliberately replaces the base's low-level `(subscriber, persistent)` hook
     # with the decorator API users actually call, as every broker does.
-    def subscriber(  # ty: ignore[invalid-method-override]
+    def subscriber(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
         queue: str | None = None,
         *,
@@ -48,7 +48,7 @@ class ServiceBusRegistrator(
         title: str | None = None,
         description: str | None = None,
         include_in_schema: bool = True,
-    ) -> "ServiceBusSubscriber":
+    ) -> "ServiceBusSubscriber":  # ty: ignore[invalid-method-override]
         """Consume from a Service Bus queue, or from a topic subscription.
 
         Args:

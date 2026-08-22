@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, Any, NoReturn, Optional
 
+from azure.servicebus import ServiceBusMessageBatch
 from azure.servicebus.exceptions import MessageSizeExceededError
 from faststream._internal.endpoint.utils import ParserComposition
 from faststream._internal.parser import DefaultCodec
@@ -44,8 +45,8 @@ class ServiceBusProducer(ProducerProto[ServiceBusPublishCommand]):
         self._connection = connection
 
         default = ServiceBusParser()
-        self._parser = ParserComposition(parser, default.parse_message)
-        self._decoder = ParserComposition(decoder, default.decode_message)
+        self._parser = ParserComposition(parser, default.parse_message)  # pyright: ignore[reportIncompatibleMethodOverride]
+        self._decoder = ParserComposition(decoder, default.decode_message)  # pyright: ignore[reportIncompatibleMethodOverride]
 
         self.serializer = serializer
         self.codec: CodecProto = codec or DefaultCodec()
@@ -112,13 +113,13 @@ class ServiceBusProducer(ProducerProto[ServiceBusPublishCommand]):
     async def _pack(
         sender: "ServiceBusSender",
         messages: list["AzureServiceBusMessage"],
-    ) -> list[Any]:
+    ) -> list[ServiceBusMessageBatch]:
         """Split messages into batches that fit the service's frame size.
 
         Service Bus caps a batch at 256 KB (1 MB on premium), and the SDK only
         reports the overflow by raising when a message won't fit.
         """
-        batches = []
+        batches: list[ServiceBusMessageBatch] = []
         batch = await sender.create_message_batch()
 
         for message in messages:
