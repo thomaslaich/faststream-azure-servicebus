@@ -49,17 +49,18 @@
 # start the Service Bus emulator and its SQL Edge backing store
 [group('infra')]
 @up:
-    bash scripts/emulator start
+    process-compose --use-uds --unix-socket "$PC_SOCKET_PATH" up --detached servicebus-emulator
 
 # stop the emulator
 [group('infra')]
 @down:
-    bash scripts/emulator stop
+    process-compose --use-uds --unix-socket "$PC_SOCKET_PATH" down
 
 # tail the emulator logs
 [group('infra')]
 @logs:
-    process-compose attach
+    process-compose --use-uds --unix-socket "$PC_SOCKET_PATH" process start servicebus-logs
+    process-compose --use-uds --unix-socket "$PC_SOCKET_PATH" attach
 
 # regenerate the emulator's entity pool (tests/infra/servicebus-config.json)
 [group('infra')]
@@ -69,19 +70,19 @@
 # publish and consume one message using the local emulator
 [group('example')]
 @example:
-    bash scripts/emulator run python examples/basic.py
+    process-compose --no-server up --tui=false example
 
 # run the test suite
 # `-n 2`, not `-n auto`: the emulator caps a namespace at 10 concurrent
 # connections, and each worker holds several.
 [group('test')]
 @test *args:
-    bash scripts/emulator run pytest -n 2 {{ args }}
+    PYTEST_ADDOPTS={{ quote(args) }} process-compose --no-server up --tui=false tests
 
 # run the tests with a coverage report
 [group('test')]
 @test-cov:
-    bash scripts/emulator run pytest -n 2 --cov --cov-report=term --cov-report=html
+    process-compose --no-server up --tui=false test-coverage
 
 # Smoke test the built wheel in an isolated environment.
 [group('build & publish')]

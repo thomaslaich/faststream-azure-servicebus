@@ -51,17 +51,18 @@ manually with `devenv shell` before invoking the recipes.
 - `schemas/` - destination models for queues and topic subscriptions.
 - `tests/` - connected tests against the Service Bus emulator or namespace.
 - `tests/infra/servicebus-config.json` - fixed emulator entity pool.
+- `process-compose.yaml` - local emulator, test, and example process graph.
 - `.github/workflows/` - PR, main-branch, and nightly FastStream-main checks.
 
 ## Conventions And Gotchas
 
-- Tests are connected tests. Start the emulator with `just up` before running
-  `just test` locally, unless `SERVICEBUS_CONNECTION_STRING` points at a real
-  namespace.
-- Devenv supervises the emulator through process-compose. Docker Compose remains
-  the two-container implementation behind `devenv up` / `just up`.
-- Local `just test` and `just example` recipes acquire the emulator and release
-  it only when they started it; they preserve an already-running dev session.
+- Tests are connected tests. `just test` manages the local emulator through the
+  process-compose graph. To target a real namespace instead, set
+  `SERVICEBUS_CONNECTION_STRING` and invoke pytest directly.
+- Process-compose supervises the local process graph; Docker Compose remains the
+  two-container implementation behind the emulator process.
+- Local `just test` and `just example` recipes start opt-in processes that depend
+  on the emulator readiness probe and tear down the stack when they exit.
 - The emulator cannot create entities at runtime. Tests lease names from the
   fixed pool in `tests/infra/servicebus-config.json`; regenerate it with
   `just gen-config` after changing queue/topic counts.

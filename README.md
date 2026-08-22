@@ -71,13 +71,13 @@ just check                   # treefmt, ruff check, ty
 
 `just --list` shows the rest.
 
-The emulator is declared as a devenv process and supervised by process-compose.
-`just test` and `just example` start it when necessary, wait for the management
-health endpoint, and stop it afterward only when they started it. `just up` and
-`just down` manage a persistent background instance. Run `devenv up` or
-`process-compose` directly to keep the TUI and process logs in the foreground;
-use `process-compose attach` for an instance started in the background. The
-runnable source for `just example` is in [`examples/basic.py`](examples/basic.py).
+The emulator, tests, and example form a process graph in
+[`process-compose.yaml`](process-compose.yaml). The test and example processes
+depend on the emulator's HTTP readiness probe and tear the Compose stack down
+when they exit. `just up` and `just down` instead manage a persistent background
+instance; `just logs` attaches to its TUI and container logs. Run
+`process-compose up` directly for the full foreground TUI. The runnable example
+source is in [`examples/basic.py`](examples/basic.py).
 
 The nightly workflow installs FastStream from upstream `main` so private-API drift
 shows up early without vendoring FastStream in this repository.
