@@ -13,6 +13,7 @@ try:
     )
     from .publisher import ServiceBusPublisher
     from .response import ServiceBusPublishCommand, ServiceBusResponse
+    from .testing import TestServiceBusBroker
 
 except ImportError as e:
     if "'azure" not in e.msg:
@@ -33,4 +34,5 @@ __all__ = (
     "ServiceBusRoute",
     "ServiceBusRouter",
     "TestApp",
+    "TestServiceBusBroker",
 )

@@ -42,6 +42,16 @@
 @test-ci *args:
     pytest -n 2 --cov --cov-report= {{ args }}
 
+# run the fast suite without Docker or an Azure namespace
+[group('test')]
+@test-offline *args:
+    pytest -m "not connected" {{ args }}
+
+# enforce the coverage gate using only the offline suite
+[group('test')]
+@test-offline-cov:
+    pytest -m "not connected" --cov --cov-report=term-missing
+
 @coverage-ci:
     coverage combine coverage
     coverage report

@@ -21,13 +21,13 @@ against the Service Bus emulator.
 Acceptance criteria: queue and topic endpoints work directly and through nested
 routers, including prefixes, publisher decorators, and AsyncAPI generation.
 
-## M4: Add `TestServiceBusBroker`
+## M4: Add `TestServiceBusBroker` (complete)
 
-- Extend FastStream's in-memory `TestBroker` infrastructure.
-- Add a patched received-message type with observable settlement state.
-- Implement in-memory queue routing and topic fan-out to subscriptions.
-- Support handler replies, publisher decorators, and multiple test brokers.
-- Add fast unit coverage for validation, parsing, settlement, sender caching,
+- [x] Extend FastStream's in-memory `TestBroker` infrastructure.
+- [x] Add a patched received-message type with observable settlement state.
+- [x] Implement in-memory queue routing and topic fan-out to subscriptions.
+- [x] Support handler replies, publisher decorators, and multiple test brokers.
+- [x] Add fast unit coverage for validation, parsing, settlement, sender caching,
   batch rollover, lifecycle, and health checks.
 
 Acceptance criteria: application handlers can be tested without Docker or an
