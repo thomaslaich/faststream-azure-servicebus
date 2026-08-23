@@ -13,6 +13,7 @@ from faststream_azure_servicebus import ServiceBusBroker
 
 broker = ServiceBusBroker("Endpoint=sb://<namespace>.servicebus.windows.net/;...")
 app = FastStream(broker)
+orders = broker.publisher(queue="orders")
 
 
 @broker.subscriber(queue="orders")
@@ -27,7 +28,7 @@ async def handle_event(body: dict) -> None:
 
 @app.after_startup
 async def publish() -> None:
-    await broker.publish({"id": 1}, queue="orders")
+    await orders.publish({"id": 1})
     await broker.publish({"kind": "created"}, topic="events")
 ```
 

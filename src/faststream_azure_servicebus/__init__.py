@@ -1,8 +1,17 @@
+from faststream._internal.parser import ParserProto
 from faststream._internal.testing.app import TestApp
 
+ServiceBusParserType = ParserProto["ServiceBusReceivedMessage"]  # type: ignore[name-defined]  # ty: ignore[unresolved-reference]
+
 try:
-    from .broker import ServiceBusBroker
-    from .message import ServiceBusMessage
+    from .annotations import ServiceBusMessage
+    from .broker import (
+        ServiceBusBroker,
+        ServiceBusPublisherArgs,
+        ServiceBusRoute,
+        ServiceBusRouter,
+    )
+    from .publisher import ServiceBusPublisher
     from .response import ServiceBusPublishCommand, ServiceBusResponse
 
 except ImportError as e:
@@ -16,7 +25,12 @@ except ImportError as e:
 __all__ = (
     "ServiceBusBroker",
     "ServiceBusMessage",
+    "ServiceBusParserType",
     "ServiceBusPublishCommand",
+    "ServiceBusPublisher",
+    "ServiceBusPublisherArgs",
     "ServiceBusResponse",
+    "ServiceBusRoute",
+    "ServiceBusRouter",
     "TestApp",
 )

@@ -2,6 +2,7 @@ from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, Any, Optional
 
 from azure.servicebus import ServiceBusMessage as AzureServiceBusMessage
+from azure.servicebus.amqp import AmqpMessageBodyType
 from faststream._internal._compat import json_dumps
 from faststream._internal.parser import DefaultCodec
 from faststream.message import decode_message, gen_cor_id
@@ -27,9 +28,22 @@ def extract_body(message: "ServiceBusReceivedMessage") -> bytes:
     `SEQUENCE` bodies can be anything AMQP can express.
     """
     body: Any = message.body
+    body_type = getattr(message, "body_type", None)
 
     if body is None:
         return b""
+
+    if body_type is AmqpMessageBodyType.SEQUENCE:
+        # Preserve AMQP sequence section boundaries. The SDK exposes these as a
+        # generator of lists; concatenating their string forms is lossy.
+        return json_dumps(list(body))
+
+    if body_type is AmqpMessageBodyType.VALUE:
+        if isinstance(body, bytes):
+            return body
+        if isinstance(body, str):
+            return body.encode()
+        return json_dumps(body)
 
     if isinstance(body, bytes):
         return body

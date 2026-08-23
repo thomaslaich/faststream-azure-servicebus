@@ -17,6 +17,7 @@ async def main() -> None:
         EMULATOR_CONNECTION_STRING,
     )
     broker = ServiceBusBroker(connection_string)
+    publisher = broker.publisher(queue=QUEUE)
     consumed = asyncio.Event()
     payload = {"id": uuid4().hex[:8], "message": "hello from FastStream"}
 
@@ -28,7 +29,7 @@ async def main() -> None:
 
     try:
         await broker.start()
-        await broker.publish(payload, queue=QUEUE)
+        await publisher.publish(payload)
         await asyncio.wait_for(consumed.wait(), timeout=15)
     finally:
         await broker.stop()

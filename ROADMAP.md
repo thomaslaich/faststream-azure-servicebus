@@ -6,17 +6,17 @@ queue and topic publishing, batch publishing, message settlement, concurrent
 handlers, lock renewal, replies, AsyncAPI subscriber schemas, and connected tests
 against the Service Bus emulator.
 
-## M3: Complete the broker surface and routers
+## M3: Complete the broker surface and routers (complete)
 
-- Add a user-facing `ServiceBusPublisher` for direct calls and handler decorators.
-- Add publisher AsyncAPI specifications.
-- Add `ServiceBusRouter`, `ServiceBusRoute`, and delayed publisher arguments.
-- Support nested-router prefixes, dependencies, middleware, codecs, persistence,
+- [x] Add a user-facing `ServiceBusPublisher` for direct calls and handler decorators.
+- [x] Add publisher AsyncAPI specifications.
+- [x] Add `ServiceBusRouter`, `ServiceBusRoute`, and delayed publisher arguments.
+- [x] Support nested-router prefixes, dependencies, middleware, codecs, persistence,
   and schema inclusion.
-- Validate that only Service Bus routers can be included.
-- Define and test how AMQP `VALUE` and `SEQUENCE` bodies are decoded.
-- Validate mutually exclusive authentication modes.
-- Export the complete public API.
+- [x] Validate that only Service Bus routers can be included.
+- [x] Define and test how AMQP `VALUE` and `SEQUENCE` bodies are decoded.
+- [x] Validate mutually exclusive authentication modes.
+- [x] Export the complete public API.
 
 Acceptance criteria: queue and topic endpoints work directly and through nested
 routers, including prefixes, publisher decorators, and AsyncAPI generation.

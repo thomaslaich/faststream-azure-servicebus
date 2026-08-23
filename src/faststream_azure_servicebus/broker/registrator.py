@@ -1,26 +1,38 @@
-from collections.abc import Iterable
-from typing import TYPE_CHECKING
+from collections.abc import Iterable, Sequence
+from typing import TYPE_CHECKING, Any, Generic, cast
 
 from azure.servicebus import ServiceBusReceivedMessage
 from faststream._internal.broker.registrator import Registrator
+from faststream._internal.configs import BrokerConfig
 from faststream._internal.constants import EMPTY
-from typing_extensions import override
+from faststream.exceptions import SetupError
+from typing_extensions import TypeVar, override
 
 from faststream_azure_servicebus.configs import ServiceBusBrokerConfig
+from faststream_azure_servicebus.publisher.factory import create_publisher
 from faststream_azure_servicebus.subscriber.factory import create_subscriber
 
 if TYPE_CHECKING:
+    from datetime import datetime, timedelta
+
     from fast_depends.dependencies import Dependant
-    from faststream._internal.endpoint.publisher import PublisherUsecase
     from faststream._internal.parser import CodecProto
-    from faststream._internal.types import CustomCallable
+    from faststream._internal.types import BrokerMiddleware, CustomCallable
     from faststream.middlewares import AckPolicy
 
+    from faststream_azure_servicebus.publisher import ServiceBusPublisher
     from faststream_azure_servicebus.subscriber.usecase import ServiceBusSubscriber
+
+ServiceBusConfig = TypeVar(
+    "ServiceBusConfig",
+    bound=BrokerConfig,
+    default=ServiceBusBrokerConfig,
+)
 
 
 class ServiceBusRegistrator(
-    Registrator[ServiceBusReceivedMessage, ServiceBusBrokerConfig],
+    Registrator[ServiceBusReceivedMessage, ServiceBusConfig],
+    Generic[ServiceBusConfig],
 ):
     """Includable to ServiceBusBroker router."""
 
@@ -44,6 +56,7 @@ class ServiceBusRegistrator(
         parser: "CustomCallable | None" = None,
         decoder: "CustomCallable | None" = None,
         codec: "CodecProto | None" = None,
+        persistent: bool = True,
         # AsyncAPI args
         title: str | None = None,
         description: str | None = None,
@@ -70,6 +83,7 @@ class ServiceBusRegistrator(
             parser: Custom parser for this subscriber.
             decoder: Custom decoder for this subscriber.
             codec: Custom codec for this subscriber.
+            persistent: Keep a strong reference to this subscriber.
             title: Channel name in the AsyncAPI document.
             description: Description in the AsyncAPI document. Defaults to the
                 handler's docstring.
@@ -80,7 +94,7 @@ class ServiceBusRegistrator(
             queue=queue,
             topic=topic,
             subscription=subscription,
-            config=self.config.broker_config,
+            config=cast("ServiceBusBrokerConfig", self.config),
             ack_policy=ack_policy,
             no_reply=no_reply,
             prefetch_count=prefetch_count,
@@ -92,7 +106,7 @@ class ServiceBusRegistrator(
             include_in_schema=include_in_schema,
         )
 
-        super().subscriber(subscriber)
+        super().subscriber(subscriber, persistent=persistent)
 
         return subscriber.add_call(
             parser_=parser,
@@ -101,10 +115,71 @@ class ServiceBusRegistrator(
             codec_=codec,
         )
 
-    @override
-    def publisher(
+    def publisher(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
-        publisher: "PublisherUsecase",
+        queue: str | None = None,
+        *,
+        topic: str | None = None,
+        headers: dict[str, Any] | None = None,
+        reply_to: str = "",
+        subject: str | None = None,
+        session_id: str | None = None,
+        partition_key: str | None = None,
+        time_to_live: "timedelta | None" = None,
+        scheduled_enqueue_time: "datetime | None" = None,
+        # broker args
         persistent: bool = True,
-    ) -> "PublisherUsecase":
-        return super().publisher(publisher, persistent)
+        # AsyncAPI args
+        title: str | None = None,
+        description: str | None = None,
+        schema: Any | None = None,
+        include_in_schema: bool = True,
+    ) -> "ServiceBusPublisher":  # ty: ignore[invalid-method-override]
+        """Create a reusable queue or topic publisher.
+
+        The returned object can publish directly or decorate a subscriber
+        handler, in which case the handler's return value is published.
+        """
+        publisher = create_publisher(
+            queue=queue,
+            topic=topic,
+            headers=headers,
+            reply_to=reply_to,
+            subject=subject,
+            session_id=session_id,
+            partition_key=partition_key,
+            time_to_live=time_to_live,
+            scheduled_enqueue_time=scheduled_enqueue_time,
+            config=cast("ServiceBusBrokerConfig", self.config),
+            title_=title,
+            description_=description,
+            schema_=schema,
+            include_in_schema=include_in_schema,
+        )
+        super().publisher(publisher, persistent=persistent)
+        return publisher
+
+    @override
+    def include_router(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self,
+        router: "ServiceBusRegistrator[Any]",
+        *,
+        prefix: str = "",
+        dependencies: Iterable["Dependant"] = (),
+        middlewares: Sequence["BrokerMiddleware[Any, Any]"] = (),
+        include_in_schema: bool | None = None,
+    ) -> None:  # ty: ignore[invalid-method-override]
+        if not isinstance(router, ServiceBusRegistrator):
+            msg = (
+                "Router must be an instance of ServiceBusRegistrator, "
+                f"got {type(router).__name__} instead"
+            )
+            raise SetupError(msg)
+
+        super().include_router(
+            router,
+            prefix=prefix,
+            dependencies=dependencies,
+            middlewares=middlewares,
+            include_in_schema=include_in_schema,
+        )

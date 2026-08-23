@@ -9,7 +9,12 @@ import pytest_asyncio
 from azure.servicebus import ServiceBusSubQueue
 from faststream import AckPolicy
 
-from faststream_azure_servicebus import ServiceBusBroker
+from faststream_azure_servicebus import (
+    ServiceBusBroker,
+    ServiceBusPublisherArgs,
+    ServiceBusRoute,
+    ServiceBusRouter,
+)
 from tests.conftest import connection_string
 
 if TYPE_CHECKING:
@@ -342,6 +347,55 @@ async def test_reply_to_is_answered(
 
     assert len(replies) == 1
     assert b"".join(replies[0].body) == b'{"answer":42}'
+
+
+async def test_publisher_decorator_publishes_handler_result(
+    broker: ServiceBusBroker,
+    raw_client: ServiceBusClient,
+    queue: str,
+    reply_queue: str,
+) -> None:
+    publisher = broker.publisher(queue=reply_queue, subject="answer")
+
+    @broker.subscriber(queue)
+    @publisher
+    async def handler(body: dict[str, int]) -> dict[str, int]:
+        return {"answer": body["n"] * 2}
+
+    await broker.start()
+    await broker.publish({"n": 21}, queue=queue)
+
+    published = await remaining_messages(raw_client, reply_queue, timeout=TIMEOUT)
+
+    assert len(published) == 1
+    assert b"".join(published[0].body) == b'{"answer":42}'
+    assert published[0].subject == "answer"
+
+
+async def test_delayed_router_publishes_handler_result(
+    broker: ServiceBusBroker,
+    raw_client: ServiceBusClient,
+    queue: str,
+    reply_queue: str,
+) -> None:
+    async def handler(body: dict[str, int]) -> dict[str, int]:
+        return {"answer": body["n"] * 2}
+
+    route = ServiceBusRoute(
+        handler,
+        queue=queue,
+        publishers=(ServiceBusPublisherArgs(queue=reply_queue, subject="router-answer"),),
+    )
+    broker.include_router(ServiceBusRouter(handlers=(route,)))
+
+    await broker.start()
+    await broker.publish({"n": 21}, queue=queue)
+
+    published = await remaining_messages(raw_client, reply_queue, timeout=TIMEOUT)
+
+    assert len(published) == 1
+    assert b"".join(published[0].body) == b'{"answer":42}'
+    assert published[0].subject == "router-answer"
 
 
 async def test_get_one(broker: ServiceBusBroker, queue: str) -> None:

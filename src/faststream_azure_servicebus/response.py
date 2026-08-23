@@ -19,6 +19,21 @@ class DestinationType(str, Enum):
     Topic = "topic"
 
 
+def resolve_publish_destination(
+    *,
+    queue: str | None,
+    topic: str | None,
+) -> tuple[DestinationType, str]:
+    if (queue is None) == (topic is None):
+        raise SetupError(INCORRECT_SETUP_MSG)
+
+    if queue is not None:
+        return DestinationType.Queue, queue
+
+    assert topic is not None
+    return DestinationType.Topic, topic
+
+
 class ServiceBusResponse(Response):
     """Return this from a handler to control how the reply is published."""
 
@@ -109,16 +124,10 @@ class ServiceBusPublishCommand(BatchPublishCommand):
         queue: str | None = None,
         topic: str | None = None,
     ) -> None:
-        if (queue is None) == (topic is None):
-            raise SetupError(INCORRECT_SETUP_MSG)
-
-        if queue is not None:
-            self.destination_type = DestinationType.Queue
-            self.destination = queue
-        else:
-            assert topic is not None
-            self.destination_type = DestinationType.Topic
-            self.destination = topic
+        self.destination_type, self.destination = resolve_publish_destination(
+            queue=queue,
+            topic=topic,
+        )
 
     @classmethod
     def from_cmd(

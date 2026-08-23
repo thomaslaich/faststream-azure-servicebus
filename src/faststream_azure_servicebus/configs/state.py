@@ -153,6 +153,15 @@ def build_client_factory(
     """Return a factory for the client described by the broker's arguments."""
     from azure.servicebus.aio import ServiceBusClient
 
+    if connection_string is not None and (
+        fully_qualified_namespace is not None or credential is not None
+    ):
+        msg = (
+            "A connection string cannot be combined with "
+            "`fully_qualified_namespace` or `credential`."
+        )
+        raise IncorrectState(msg)
+
     if connection_string is not None:
 
         def from_connection_string() -> ServiceBusClient:

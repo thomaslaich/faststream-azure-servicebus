@@ -5,10 +5,19 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from azure.servicebus.amqp import AmqpMessageBodyType
 from azure.servicebus.exceptions import MessageAlreadySettled
 from faststream.exceptions import FeatureNotSupportedException, IncorrectState, SetupError
 from faststream.response.publish_type import PublishType
+from faststream.specification import AsyncAPI
 
+from faststream_azure_servicebus import (
+    ServiceBusBroker,
+    ServiceBusPublisher,
+    ServiceBusPublisherArgs,
+    ServiceBusRoute,
+    ServiceBusRouter,
+)
 from faststream_azure_servicebus.broker.broker import _specification_url
 from faststream_azure_servicebus.configs import (
     ServiceBusConnectionState,
@@ -63,6 +72,64 @@ def test_publish_destination_requires_exactly_one() -> None:
     command = ServiceBusPublishCommand("body", topic="topic", **kwargs)
     assert command.destination_type is DestinationType.Topic
     assert command.destination == "topic"
+
+
+def test_publisher_destination_requires_exactly_one() -> None:
+    broker = ServiceBusBroker("Endpoint=sb://localhost")
+
+    with pytest.raises(SetupError, match="exactly one"):
+        broker.publisher()
+
+    with pytest.raises(SetupError, match="exactly one"):
+        broker.publisher(queue="queue", topic="topic")
+
+
+@pytest.mark.asyncio()
+async def test_publisher_uses_defaults_and_allows_call_overrides() -> None:
+    broker = ServiceBusBroker("Endpoint=sb://localhost")
+    publisher = broker.publisher(
+        topic="events",
+        headers={"source": "publisher", "default": True},
+        subject="event.created",
+    )
+    producer_publish = AsyncMock()
+    broker.config.producer.publish = producer_publish
+
+    await publisher.publish(
+        {"id": 1},
+        headers={"source": "call"},
+        correlation_id="correlation-id",
+    )
+
+    command = producer_publish.await_args.args[0]
+    assert isinstance(publisher, ServiceBusPublisher)
+    assert broker.publishers == [publisher]
+    assert command.destination_type is DestinationType.Topic
+    assert command.destination == "events"
+    assert command.headers == {"source": "call", "default": True}
+    assert command.subject == "event.created"
+    assert command.correlation_id == "correlation-id"
+
+
+def test_publisher_decorator_contributes_asyncapi_payload() -> None:
+    broker = ServiceBusBroker("Endpoint=sb://localhost")
+    publisher = broker.publisher(
+        queue="results",
+        title="results-publisher",
+        description="Published handler results.",
+    )
+
+    @publisher
+    async def handle() -> dict[str, int]:
+        return {"answer": 42}
+
+    schema = publisher.schema()["results-publisher"]
+    asyncapi = AsyncAPI(broker).to_specification()
+
+    assert publisher in handle._publishers
+    assert schema.description == "Published handler results."
+    assert schema.operation.message.payload
+    assert asyncapi.operations["results-publisher"].action.value == "send"
 
 
 def test_response_builds_a_service_bus_command() -> None:
@@ -135,6 +202,28 @@ def test_extract_body_variants(body: Any, expected: bytes) -> None:
     assert extract_body(message) == expected  # type: ignore[arg-type]
 
 
+@pytest.mark.parametrize(
+    ("body_type", "body", "expected"),
+    (
+        (AmqpMessageBodyType.VALUE, {"key": "value"}, b'{"key": "value"}'),
+        (AmqpMessageBodyType.VALUE, [1, "two"], b'[1, "two"]'),
+        (
+            AmqpMessageBodyType.SEQUENCE,
+            iter(([1, 2], ["three"])),
+            b'[[1, 2], ["three"]]',
+        ),
+    ),
+)
+def test_extract_body_preserves_amqp_value_and_sequence_shapes(
+    body_type: AmqpMessageBodyType,
+    body: Any,
+    expected: bytes,
+) -> None:
+    message = SimpleNamespace(body=body, body_type=body_type)
+
+    assert extract_body(message) == expected  # type: ignore[arg-type]
+
+
 def test_normalize_headers_preserves_non_utf8_bytes() -> None:
     assert normalize_headers({b"binary": b"\xff"}) == {"binary": b"\xff"}
 
@@ -169,6 +258,18 @@ def test_client_factory_requires_complete_credentials() -> None:
         build_client_factory(None, "example.servicebus.windows.net", None, {})
 
 
+@pytest.mark.parametrize(
+    ("namespace", "credential"),
+    (("example.servicebus.windows.net", None), (None, object())),
+)
+def test_client_factory_rejects_mixed_authentication_modes(
+    namespace: str | None,
+    credential: object | None,
+) -> None:
+    with pytest.raises(IncorrectState, match="cannot be combined"):
+        build_client_factory("Endpoint=sb://localhost", namespace, credential, {})
+
+
 def test_client_factory_builds_a_credential_client() -> None:
     credential = object()
 
@@ -194,6 +295,70 @@ def test_router_config_has_no_connection() -> None:
 
     with pytest.raises(IncorrectState):
         _ = config.connection
+
+
+def test_nested_router_prefixes_apply_to_every_endpoint() -> None:
+    leaf = ServiceBusRouter(prefix="leaf.")
+    subscriber = leaf.subscriber(queue="input")
+    publisher = leaf.publisher(topic="output")
+    parent = ServiceBusRouter(prefix="parent.", routers=(leaf,))
+    broker = ServiceBusBroker("Endpoint=sb://localhost", routers=(parent,))
+
+    assert subscriber.destination.path == "parent.leaf.input"
+    assert publisher.destination == "parent.leaf.output"
+    assert subscriber in broker.subscribers
+    assert publisher in broker.publishers
+
+
+def test_router_options_are_composed_into_endpoints() -> None:
+    dependency = MagicMock()
+    middleware = MagicMock()
+    codec = MagicMock()
+    router = ServiceBusRouter(
+        dependencies=(dependency,),
+        middlewares=(middleware,),
+        codec=codec,
+        include_in_schema=False,
+    )
+    subscriber = router.subscriber(queue="input")
+    publisher = router.publisher(queue="output")
+    ServiceBusBroker("Endpoint=sb://localhost", routers=(router,))
+
+    assert tuple(subscriber._outer_config.broker_dependencies) == (dependency,)
+    assert subscriber._outer_config.broker_middlewares == [middleware]
+    assert subscriber._outer_config.broker_codec is codec
+    assert not subscriber.specification.include_in_schema
+    assert not publisher.specification.include_in_schema
+
+
+def test_router_rejects_a_foreign_registrator() -> None:
+    broker = ServiceBusBroker("Endpoint=sb://localhost")
+
+    with pytest.raises(SetupError, match="ServiceBusRegistrator"):
+        broker.include_router(MagicMock())  # type: ignore[arg-type]
+
+
+def test_delayed_route_registers_subscriber_and_publisher() -> None:
+    async def handler(body: dict[str, int]) -> dict[str, int]:
+        return {"answer": body["n"] * 2}
+
+    route = ServiceBusRoute(
+        handler,
+        queue="input",
+        publishers=(ServiceBusPublisherArgs(topic="output"),),
+    )
+    router = ServiceBusRouter(prefix="v1.", handlers=(route,))
+    broker = ServiceBusBroker("Endpoint=sb://localhost", routers=(router,))
+    asyncapi = AsyncAPI(broker).to_specification()
+
+    assert [subscriber.destination.path for subscriber in broker.subscribers] == [
+        "v1.input"
+    ]
+    assert [publisher.destination for publisher in broker.publishers] == ["v1.output"]
+    assert set(asyncapi.channels) == {
+        "v1.input:Handler",
+        "v1.output:Publisher",
+    }
 
 
 def make_message() -> ServiceBusMessage:
