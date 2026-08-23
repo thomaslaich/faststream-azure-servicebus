@@ -39,18 +39,28 @@
 @ci: fmt-ci lint-ci typecheck-ci
     @echo "Code analysis complete"
 
-@test-ci *args:
-    pytest -n 2 --cov --cov-report= {{ args }}
-
 # run the fast suite without Docker or an Azure namespace
 [group('test')]
 @test-offline *args:
     pytest -m "not connected" {{ args }}
 
+# collect offline coverage in CI without producing a per-job report
+@test-offline-ci *args:
+    pytest -m "not connected" --cov --cov-report= {{ args }}
+
 # enforce the coverage gate using only the offline suite
 [group('test')]
 @test-offline-cov:
     pytest -m "not connected" --cov --cov-report=term-missing
+
+# run only the emulator-backed tests
+[group('test')]
+@test-connected *args:
+    PYTEST_ADDOPTS={{ quote("-m connected " + args) }} process-compose --no-server up --tui=false tests
+
+# collect connected coverage in CI without producing a per-job report
+@test-connected-ci *args:
+    pytest -m connected -n 2 --cov --cov-report= {{ args }}
 
 @coverage-ci:
     coverage combine coverage

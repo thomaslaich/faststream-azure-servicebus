@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 import pytest
@@ -29,11 +31,15 @@ async def receive_from_queue(
     name: str,
     *,
     count: int = 1,
+    wait: float = 5,
 ) -> list[ServiceBusReceivedMessage]:
-    async with client.get_queue_receiver(queue_name=name, max_wait_time=5) as receiver:
+    async with client.get_queue_receiver(
+        queue_name=name,
+        max_wait_time=wait,
+    ) as receiver:
         return await receiver.receive_messages(
             max_message_count=count,
-            max_wait_time=5,
+            max_wait_time=wait,
         )
 
 
@@ -137,6 +143,42 @@ async def test_publish_batch_of_nothing_is_a_noop(
     assert await receive_from_queue(raw_client, queue, count=5) == []
 
 
+async def test_message_expires_after_its_time_to_live(
+    broker: ServiceBusBroker,
+    raw_client: ServiceBusClient,
+    queue: str,
+) -> None:
+    await broker.publish(
+        {"expired": True},
+        queue=queue,
+        time_to_live=timedelta(seconds=1),
+    )
+
+    await asyncio.sleep(2)
+
+    assert await receive_from_queue(raw_client, queue, count=5, wait=1) == []
+
+
+async def test_scheduled_message_is_not_delivered_early(
+    broker: ServiceBusBroker,
+    raw_client: ServiceBusClient,
+    queue: str,
+) -> None:
+    enqueue_at = datetime.now(timezone.utc) + timedelta(seconds=3)
+    await broker.publish(
+        {"scheduled": True},
+        queue=queue,
+        scheduled_enqueue_time=enqueue_at,
+    )
+
+    assert await receive_from_queue(raw_client, queue, wait=0.5) == []
+
+    await asyncio.sleep(3)
+    (message,) = await receive_from_queue(raw_client, queue, wait=5)
+
+    assert body_of(message) == b'{"scheduled":true}'
+
+
 async def test_publish_to_topic_reaches_every_subscription(
     broker: ServiceBusBroker,
     raw_client: ServiceBusClient,
@@ -187,3 +229,21 @@ async def test_ping_without_a_connection() -> None:
     broker = ServiceBusBroker(connection_string())
 
     assert await broker.ping(timeout=1) is False
+
+
+async def test_publish_reconnects_after_broker_restart(
+    broker: ServiceBusBroker,
+    raw_client: ServiceBusClient,
+    queue: str,
+) -> None:
+    await broker.start()
+    await broker.publish({"attempt": 1}, queue=queue)
+    (first,) = await receive_from_queue(raw_client, queue)
+
+    await broker.stop()
+    await broker.start()
+    await broker.publish({"attempt": 2}, queue=queue)
+    (second,) = await receive_from_queue(raw_client, queue)
+
+    assert body_of(first) == b'{"attempt":1}'
+    assert body_of(second) == b'{"attempt":2}'

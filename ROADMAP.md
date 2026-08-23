@@ -33,21 +33,36 @@ routers, including prefixes, publisher decorators, and AsyncAPI generation.
 Acceptance criteria: application handlers can be tested without Docker or an
 Azure namespace, and the offline suite satisfies the repository's coverage gate.
 
-## M5: Conformance suite and emulator CI
+## M5: Conformance suite and emulator CI (complete)
 
-- Split fast offline tests from connected emulator tests.
-- Cover dependencies, middleware, custom parsers, decoders, codecs, responses,
+- [x] Split fast offline tests from connected emulator tests.
+- [x] Cover dependencies, middleware, custom parsers, decoders, codecs, responses,
   routers, AsyncAPI, `get_one`, iteration, and publisher decorators.
-- Exercise every acknowledgement policy without unexpected error logs.
-- Cover lock renewal, concurrent shutdown, receive recovery, oversized batches,
+- [x] Exercise every acknowledgement policy without unexpected error logs.
+- [x] Cover lock renewal, concurrent shutdown, receive recovery, oversized batches,
   time-to-live, scheduling, and sender reconnection.
-- Keep the supported-Python CI matrix and the FastStream-main nightly job.
-- Pin emulator infrastructure versions for reproducible builds.
+- [x] Keep the supported-Python CI matrix and the FastStream-main nightly job.
+- [x] Pin emulator infrastructure versions for reproducible builds.
 
 Acceptance criteria: static checks, offline tests, connected tests, coverage, and
 nightly FastStream compatibility all pass.
 
-## M6: Documentation and PyPI release
+## M6: Add broker request/reply
+
+- Add a broker `request()` API with an explicitly configured reply queue.
+- Set and preserve `message_id`, `correlation_id`, and `reply_to` properties.
+- Route concurrent outstanding requests to the correct waiter.
+- Define timeout, cancellation, late-reply, shutdown, and connection-recovery
+  behavior without leaking receivers or background tasks.
+- Support queue and topic request destinations without requiring sessions.
+- Provide equivalent in-memory behavior through `TestServiceBusBroker`.
+- Cover the protocol with offline and connected emulator tests.
+
+Acceptance criteria: applications can send concurrent requests and receive the
+matching replies through both the real broker and `TestServiceBusBroker`, with
+deterministic cleanup on success, failure, timeout, and shutdown.
+
+## M7: Documentation and PyPI release
 
 - Add a documentation site covering installation, authentication, queues, topics,
   routers, publishers, settlement, testing, emulator setup, and limitations.
@@ -63,7 +78,7 @@ quick start, test an application offline, and understand the supported feature s
 
 ## Explicitly deferred
 
-- Session-enabled consumers and request/reply
+- Session-enabled consumers
 - Deferred-message retrieval and dead-letter queue consumption
 - FastAPI integration
 - OpenTelemetry and Prometheus providers

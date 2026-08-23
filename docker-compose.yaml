@@ -1,6 +1,8 @@
 services:
   servicebus:
-    image: mcr.microsoft.com/azure-messaging/servicebus-emulator:latest
+    # Multi-architecture manifest digest; update deliberately after running the
+    # full connected suite against a newer emulator release.
+    image: mcr.microsoft.com/azure-messaging/servicebus-emulator@sha256:5a96d893b245031740f7d46e0fe5ff282d24b78c4b7d761dd57590f3f010a9b3
     volumes:
       - "./tests/infra/servicebus-config.json:/ServiceBus_Emulator/ConfigFiles/Config.json:ro"
     ports:
@@ -20,7 +22,8 @@ services:
   # manifests — do not pin `platform`, the amd64 image segfaults under emulation
   # on Apple Silicon.
   sqledge:
-    image: mcr.microsoft.com/azure-sql-edge:latest
+    # Multi-architecture manifest digest paired with the emulator pin above.
+    image: mcr.microsoft.com/azure-sql-edge@sha256:902628a8be89e35dfb7895ca31d602974c7bafde4d583a0d0873844feb1c42cf
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_SA_PASSWORD: "Emulator!Passw0rd" # pragma: allowlist secret

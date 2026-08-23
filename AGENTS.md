@@ -30,9 +30,11 @@ list recipes. Key ones:
 | `just ci` | CI static analysis: treefmt check, GitHub-formatted lint, typecheck. |
 | `just up` / `just down` | Start / stop the Service Bus emulator stack. |
 | `just example` | Publish and consume one message against the emulator. |
-| `just test` | Run the connected pytest suite with xdist. |
+| `just test-offline` | Run the fast suite without Docker or Azure. |
+| `just test-connected` | Run only the emulator-backed suite. |
+| `just test` | Run the full suite against the emulator with xdist. |
 | `just test-cov` | Run tests with a local coverage report. |
-| `just test-ci` | CI test recipe with coverage data but no terminal report. |
+| `just test-offline-ci` / `just test-connected-ci` | CI coverage recipes without terminal reports. |
 | `just build` | Build the Python distribution with `uv build`. |
 
 Use the `just` recipes in automation instead of spelling out the underlying

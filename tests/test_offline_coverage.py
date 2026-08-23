@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import anyio
 import pytest
 from azure.servicebus import ServiceBusReceiveMode
 from faststream.response.publish_type import PublishType
@@ -11,7 +12,7 @@ from faststream_azure_servicebus import ServiceBusBroker, TestServiceBusBroker
 from faststream_azure_servicebus.configs import ServiceBusConnectionState
 from faststream_azure_servicebus.message import ServiceBusMessage
 from faststream_azure_servicebus.publisher.producer import ServiceBusProducer
-from faststream_azure_servicebus.response import ServiceBusPublishCommand
+from faststream_azure_servicebus.response import DestinationType, ServiceBusPublishCommand
 from faststream_azure_servicebus.testing import PatchedMessage, PatchedReceiver
 
 
@@ -44,6 +45,36 @@ async def test_connection_state_caches_and_closes_senders() -> None:
     await state.disconnect()
     sender.close.assert_awaited_once()
     client.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio()
+async def test_connection_state_recreates_senders_after_reconnect() -> None:
+    first_sender = AsyncMock()
+    second_sender = AsyncMock()
+    first_client = MagicMock()
+    first_client.get_queue_sender.return_value = first_sender
+    first_client.close = AsyncMock()
+    second_client = MagicMock()
+    second_client.get_queue_sender.return_value = second_sender
+    second_client.close = AsyncMock()
+    state = ServiceBusConnectionState(
+        MagicMock(side_effect=(first_client, second_client))
+    )
+
+    await state.connect()
+    async with state.sender(DestinationType.Queue, "q") as sender_before:
+        pass
+    await state.disconnect()
+
+    await state.connect()
+    async with state.sender(DestinationType.Queue, "q") as sender_after:
+        pass
+    await state.disconnect()
+
+    assert sender_before is first_sender
+    assert sender_after is second_sender
+    first_sender.close.assert_awaited_once()
+    second_sender.close.assert_awaited_once()
 
 
 @pytest.mark.asyncio()
@@ -170,6 +201,39 @@ async def test_subscriber_offline_start_get_one_and_stop() -> None:
     assert message is not None
     assert await message.decode() == {"id": 1}
     receiver.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio()
+async def test_consume_loop_recovers_and_resets_error_logging() -> None:
+    broker = ServiceBusBroker("Endpoint=sb://unused")
+    subscriber = broker.subscriber(queue="q")
+    attempts = 0
+
+    async def get_messages() -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 3:
+            return
+        if attempts == 4:
+            subscriber.running = False
+        message = "transient receive failure"
+        raise RuntimeError(message)
+
+    subscriber._get_msgs = get_messages  # type: ignore[method-assign]
+    subscriber._log = MagicMock()  # type: ignore[method-assign]
+    subscriber.running = True
+    start_signal = anyio.Event()
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        sleep = AsyncMock()
+        monkeypatch.setattr(anyio, "sleep", sleep)
+        await subscriber._consume(start_signal=start_signal)
+
+    assert start_signal.is_set()
+    assert attempts == 4
+    # Consecutive failures log once; a successful receive resets that suppression.
+    assert subscriber._log.call_count == 2  # type: ignore[attr-defined]
+    assert sleep.await_count == 3
 
 
 @pytest.mark.asyncio()

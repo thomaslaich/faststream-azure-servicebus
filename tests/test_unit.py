@@ -446,3 +446,15 @@ async def test_producer_splits_full_batches() -> None:
 
     assert packed == batches
     assert [batch.messages for batch in packed] == [[messages[0]], [messages[1]]]
+
+
+@pytest.mark.asyncio()
+async def test_producer_rejects_a_message_larger_than_an_empty_batch() -> None:
+    batch = MagicMock()
+    batch.__len__.return_value = 0
+    batch.add_message.side_effect = ValueError("message is too large")
+    sender = MagicMock()
+    sender.create_message_batch = AsyncMock(return_value=batch)
+
+    with pytest.raises(ValueError, match="too large"):
+        await ServiceBusProducer._pack(sender, [MagicMock()])

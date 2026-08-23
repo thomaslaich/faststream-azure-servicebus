@@ -126,6 +126,20 @@ async def queue(
 
 
 @pytest_asyncio.fixture
+async def short_lock_queue(
+    short_lock_queue_pool: Iterator[str],
+    raw_client: ServiceBusClient,
+) -> AsyncGenerator[str, None]:
+    """Lease a queue whose five-second lock makes renewal observable."""
+    name = next(short_lock_queue_pool)
+    await _purge_queue(raw_client, name)
+    try:
+        yield name
+    finally:
+        await _purge_queue(raw_client, name)
+
+
+@pytest_asyncio.fixture
 async def reply_queue(
     queue_pool: Iterator[str],
     raw_client: ServiceBusClient,

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -25,6 +24,20 @@ if TYPE_CHECKING:
 pytestmark = [pytest.mark.asyncio, pytest.mark.connected]
 
 TIMEOUT = 20
+
+UNEXPECTED_SETTLEMENT_LOGS = (
+    "Message fetch error",
+    "Could not complete",
+    "Could not abandon",
+    "Could not dead-letter",
+    "not supported in 'RECEIVE_AND_DELETE'",
+)
+
+
+def assert_no_unexpected_settlement_logs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    assert not any(message in caplog.text for message in UNEXPECTED_SETTLEMENT_LOGS)
 
 
 @pytest_asyncio.fixture
@@ -147,6 +160,7 @@ async def test_reject_on_error_dead_letters(
     raw_client: ServiceBusClient,
     queue: str,
     event: asyncio.Event,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     @broker.subscriber(queue)  # REJECT_ON_ERROR is the default
     async def handler(body: dict[str, Any]) -> None:
@@ -163,11 +177,13 @@ async def test_reject_on_error_dead_letters(
     dead_lettered = await dead_letter_messages(raw_client, queue)
     assert len(dead_lettered) == 1
     assert await remaining_messages(raw_client, queue) == []
+    assert_no_unexpected_settlement_logs(caplog)
 
 
 async def test_nack_on_error_redelivers(
     broker: ServiceBusBroker,
     queue: str,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     deliveries: list[int] = []
     twice = asyncio.Event()
@@ -187,6 +203,7 @@ async def test_nack_on_error_redelivers(
     await asyncio.wait_for(twice.wait(), timeout=TIMEOUT)
 
     assert len(deliveries) >= 2
+    assert_no_unexpected_settlement_logs(caplog)
 
 
 async def test_ack_policy_ack_settles_even_on_error(
@@ -194,6 +211,7 @@ async def test_ack_policy_ack_settles_even_on_error(
     raw_client: ServiceBusClient,
     queue: str,
     event: asyncio.Event,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     @broker.subscriber(queue, ack_policy=AckPolicy.ACK)
     async def handler(body: dict[str, Any]) -> None:
@@ -209,6 +227,7 @@ async def test_ack_policy_ack_settles_even_on_error(
 
     assert await remaining_messages(raw_client, queue) == []
     assert await dead_letter_messages(raw_client, queue, timeout=3) == []
+    assert_no_unexpected_settlement_logs(caplog)
 
 
 async def test_ack_first_uses_receive_and_delete(
@@ -218,8 +237,6 @@ async def test_ack_first_uses_receive_and_delete(
     event: asyncio.Event,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    caplog.set_level(logging.CRITICAL)
-
     @broker.subscriber(queue, ack_policy=AckPolicy.ACK_FIRST)
     async def handler(body: dict[str, Any]) -> None:
         event.set()
@@ -235,7 +252,7 @@ async def test_ack_first_uses_receive_and_delete(
     # RECEIVE_AND_DELETE: the message is gone on arrival, error or not.
     assert await remaining_messages(raw_client, queue) == []
     assert await dead_letter_messages(raw_client, queue, timeout=3) == []
-    assert "not supported in 'RECEIVE_AND_DELETE'" not in caplog.text
+    assert_no_unexpected_settlement_logs(caplog)
 
 
 async def test_manual_ack_leaves_settlement_to_the_handler(
@@ -243,6 +260,7 @@ async def test_manual_ack_leaves_settlement_to_the_handler(
     raw_client: ServiceBusClient,
     queue: str,
     event: asyncio.Event,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     from faststream_azure_servicebus.annotations import ServiceBusMessage
 
@@ -258,6 +276,7 @@ async def test_manual_ack_leaves_settlement_to_the_handler(
     await broker.stop()
 
     assert await remaining_messages(raw_client, queue) == []
+    assert_no_unexpected_settlement_logs(caplog)
 
 
 async def test_manual_reject_dead_letters(
@@ -265,6 +284,7 @@ async def test_manual_reject_dead_letters(
     raw_client: ServiceBusClient,
     queue: str,
     event: asyncio.Event,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     from faststream_azure_servicebus.annotations import ServiceBusMessage
 
@@ -282,6 +302,7 @@ async def test_manual_reject_dead_letters(
     dead_lettered = await dead_letter_messages(raw_client, queue)
     assert len(dead_lettered) == 1
     assert dead_lettered[0].dead_letter_reason == "unwanted"
+    assert_no_unexpected_settlement_logs(caplog)
 
 
 async def test_consume_from_topic_subscription(
@@ -325,6 +346,63 @@ async def test_concurrent_subscriber_processes_in_parallel(
     await asyncio.wait_for(done.wait(), timeout=TIMEOUT)
 
     assert sorted(seen) == [0, 1, 2, 3, 4]
+
+
+async def test_lock_is_renewed_while_a_slow_handler_runs(
+    broker: ServiceBusBroker,
+    raw_client: ServiceBusClient,
+    short_lock_queue: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    finished = asyncio.Event()
+
+    @broker.subscriber(
+        short_lock_queue,
+        max_lock_renewal_duration=15,
+    )
+    async def handler() -> None:
+        # The entity lock lasts five seconds. Completing after seven seconds is
+        # only possible if AutoLockRenewer extends it while this handler runs.
+        await asyncio.sleep(7)
+        finished.set()
+
+    await broker.start()
+    await broker.publish({}, queue=short_lock_queue)
+    await asyncio.wait_for(finished.wait(), timeout=TIMEOUT)
+    await broker.stop()
+
+    assert await remaining_messages(raw_client, short_lock_queue, timeout=2) == []
+    assert "lock is gone" not in caplog.text
+
+
+async def test_shutdown_waits_for_an_in_flight_handler(
+    broker: ServiceBusBroker,
+    raw_client: ServiceBusClient,
+    queue: str,
+) -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+    finished = asyncio.Event()
+
+    @broker.subscriber(queue)
+    async def handler() -> None:
+        started.set()
+        await release.wait()
+        finished.set()
+
+    await broker.start()
+    await broker.publish({}, queue=queue)
+    await asyncio.wait_for(started.wait(), timeout=TIMEOUT)
+
+    stopping = asyncio.create_task(broker.stop())
+    await asyncio.sleep(0.2)
+    assert not stopping.done()
+
+    release.set()
+    await asyncio.wait_for(stopping, timeout=TIMEOUT)
+
+    assert finished.is_set()
+    assert await remaining_messages(raw_client, queue, timeout=2) == []
 
 
 async def test_reply_to_is_answered(
