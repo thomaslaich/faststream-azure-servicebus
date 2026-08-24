@@ -72,18 +72,8 @@ asyncio.run(main())
 
 The repository includes runnable
 [`publish/consume`](examples/basic.py) and
-[`request/reply`](examples/request_reply.py) examples for the local emulator.
-
-### Custom serialization
-
-A custom codec owns the encoded bytes, content type, and decoding. Use one for a
-non-JSON wire format such as MessagePack. The runnable
-[`MessagePack example`](examples/messagepack.py) publishes with
-`application/msgpack` and decodes it in the subscriber.
-
-The broker's `serializer=` participates in FastDepends object conversion and the
-default codec's structured-value encoding; it does not select a different wire format
-or content type by itself.
+[`request/reply`](examples/request_reply.py), and
+[`MessagePack`](examples/messagepack.py) examples for the local emulator.
 
 ## Features
 
