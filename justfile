@@ -92,6 +92,11 @@
 @example:
     process-compose --no-server up --tui=false example
 
+# send a request and receive its correlated reply using the local emulator
+[group('example')]
+@example-request-reply:
+    process-compose --no-server up --tui=false example-request-reply
+
 # run the test suite
 # `-n 2`, not `-n auto`: the emulator caps a namespace at 10 concurrent
 # connections, and each worker holds several.

@@ -3,9 +3,13 @@
 An [Azure Service Bus](https://learn.microsoft.com/azure/service-bus-messaging/) broker for
 [FastStream](https://github.com/ag2ai/faststream).
 
-> **Status: pre-alpha.** Under active development; the public API will change.
+## Why?
 
-See the [roadmap](ROADMAP.md) for the planned broker, testing, and release work.
+https://github.com/ag2ai/faststream/issues/822
+
+## Quickstart
+
+### Publish and consume
 
 ```python
 from faststream import FastStream
@@ -32,26 +36,63 @@ async def publish() -> None:
     await broker.publish({"kind": "created"}, topic="events")
 ```
 
-## Scope
+### Request and reply
 
-Supported in the first release line:
+Request/reply requires a pre-existing reply queue that is exclusive to the broker
+instance:
+
+```python
+import asyncio
+
+from faststream_azure_servicebus import ServiceBusBroker
+
+broker = ServiceBusBroker(
+    "Endpoint=sb://<namespace>.servicebus.windows.net/;...",
+    reply_queue="rpc-replies",
+)
+
+
+@broker.subscriber(queue="commands")
+async def handle_command(body: dict[str, int]) -> dict[str, int]:
+    return {"answer": body["value"] * 2}
+
+
+async def main() -> None:
+    try:
+        await broker.start()
+        response = await broker.request(
+            {"value": 21},
+            queue="commands",
+            timeout=10,
+        )
+        print(await response.decode())  # {'answer': 42}
+    finally:
+        await broker.stop()
+
+
+asyncio.run(main())
+```
+
+The repository includes runnable
+[`publish/consume`](examples/basic.py) and
+[`request/reply`](examples/request_reply.py) examples for the local emulator.
+
+## Features
+
+Supported today:
 
 - Queue publishers and subscribers
 - Topic publishers, topic-subscription subscribers
+- Handler replies and correlated broker request/reply
+- Concurrent handlers and concurrent request waiters
 - Peek-lock settlement mapped onto FastStream's `AckPolicy`
   (`complete` / `abandon` / `dead-letter`)
 - Background message-lock renewal for long-running handlers
 - Batch publishing
-- Broker request/reply over an explicitly configured reply queue
-
-Request/reply uses one shared receiver and correlates concurrent responses. The reply
-queue must already exist and be exclusive to that broker instance:
-
-```python
-broker = ServiceBusBroker(connection_string, reply_queue="rpc-replies")
-response = await broker.request({"id": 1}, queue="commands", timeout=10)
-body = await response.decode()
-```
+- Message time-to-live and scheduled enqueueing
+- Routers, publisher decorators, middleware, dependencies, and custom codecs
+- AsyncAPI schemas
+- Offline application tests with `TestServiceBusBroker`
 
 Planned, not yet implemented: sessions, deferred-message retrieval, dead-letter queue
 consumption, the FastAPI plugin, and the OpenTelemetry and Prometheus providers.
@@ -76,6 +117,7 @@ direnv allow                 # or: devenv shell
 
 just up                      # Service Bus emulator + its SQL Edge backing store
 just example                 # publish and consume one message
+just example-request-reply   # send a request and receive its reply
 just test
 just check                   # treefmt, ruff check, ty
 ```
@@ -88,7 +130,8 @@ depend on the emulator's HTTP readiness probe and tear the Compose stack down
 when they exit. `just up` and `just down` instead manage a persistent background
 instance; `just logs` attaches to its TUI and container logs. Run
 `process-compose up` directly for the full foreground TUI. The runnable example
-source is in [`examples/basic.py`](examples/basic.py).
+sources are in [`examples/basic.py`](examples/basic.py) and
+[`examples/request_reply.py`](examples/request_reply.py).
 
 The nightly workflow installs FastStream from upstream `main` so private-API drift
 shows up early without vendoring FastStream in this repository.
@@ -101,7 +144,3 @@ Two emulator limits shape the test setup: a namespace allows only **10 concurren
 connections** (hence `-n 2` rather than `-n auto`), and entities cannot be created at
 runtime. Its SQL Edge dependency ships a native arm64 image, so don't pin
 `platform: linux/amd64` — the amd64 build segfaults under emulation on Apple Silicon.
-
-## License
-
-MIT
