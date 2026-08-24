@@ -50,11 +50,14 @@ async def _wait_for_entity_pool() -> None:
     while True:
         client = ServiceBusClient.from_connection_string(connection_string())
         try:
-            async with client, client.get_subscription_receiver(
-                topic_name=f"test-topic-{TOPIC_COUNT - 1:02d}",
-                subscription_name=f"sub-{SUBSCRIPTIONS_PER_TOPIC - 1}",
-                max_wait_time=1,
-            ) as receiver:
+            async with (
+                client,
+                client.get_subscription_receiver(
+                    topic_name=f"test-topic-{TOPIC_COUNT - 1:02d}",
+                    subscription_name=f"sub-{SUBSCRIPTIONS_PER_TOPIC - 1}",
+                    max_wait_time=1,
+                ) as receiver,
+            ):
                 await receiver.peek_messages(max_message_count=1)
         except (MessagingEntityNotFoundError, ServiceBusConnectionError):
             if loop.time() >= deadline:
