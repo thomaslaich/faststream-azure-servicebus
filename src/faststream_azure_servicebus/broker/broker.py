@@ -116,6 +116,8 @@ class ServiceBusBroker(  # pyright: ignore[reportIncompatibleMethodOverride]
         fully_qualified_namespace: `<namespace>.servicebus.windows.net`.
         credential: A `TokenCredential` from `azure-identity`, e.g.
             `DefaultAzureCredential()`. Requires `fully_qualified_namespace`.
+            When omitted, the broker creates and owns a
+            `DefaultAzureCredential`; install the `identity` extra.
         retry_total: How many times the SDK retries a failed operation.
         retry_backoff_factor: Base of the SDK's exponential retry backoff.
         retry_backoff_max: Ceiling on the SDK's retry backoff, in seconds.

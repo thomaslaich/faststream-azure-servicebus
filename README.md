@@ -36,6 +36,23 @@ async def publish() -> None:
     await broker.publish({"kind": "created"}, topic="events")
 ```
 
+For passwordless Azure authentication, install the identity extra and provide only
+the namespace. The broker owns the resulting `DefaultAzureCredential` and closes it
+on shutdown:
+
+```bash
+pip install "faststream-azure-servicebus[identity]"
+```
+
+```python
+broker = ServiceBusBroker(
+    fully_qualified_namespace="<namespace>.servicebus.windows.net",
+)
+```
+
+Pass `credential=` explicitly instead when its lifecycle is shared; caller-provided
+credentials remain caller-owned.
+
 ### Request and reply
 
 Request/reply requires a pre-existing reply queue owned by the caller:
