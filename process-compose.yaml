@@ -45,6 +45,15 @@ processes:
     depends_on:
       servicebus-emulator:
         condition: process_healthy
+  example-messagepack:
+    command: python examples/messagepack.py
+    disabled: true
+    availability:
+      restart: "no"
+      exit_on_end: true
+    depends_on:
+      servicebus-emulator:
+        condition: process_healthy
   tests:
     command: pytest -n 2
     disabled: true

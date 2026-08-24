@@ -54,6 +54,7 @@ style = "pep440"
 
 [dependency-groups]
 lint = ["ruff==0.14.14", "ty==0.0.72"]
+examples = ["msgpack>=1.0.0,<2.0.0"]
 
 test = [
   "pytest==9.0.3",
@@ -69,6 +70,7 @@ test = [
 dev = [
   { include-group = "lint" },
   { include-group = "test" },
+  { include-group = "examples" },
   "rust-just==1.58.0",
 ]
 

@@ -97,6 +97,11 @@
 @example-request-reply:
     process-compose --no-server up --tui=false example-request-reply
 
+# publish and consume MessagePack using a custom codec
+[group('example')]
+@example-messagepack:
+    process-compose --no-server up --tui=false example-messagepack
+
 # run the test suite
 # `-n 2`, not `-n auto`: the emulator caps a namespace at 10 concurrent
 # connections, and each worker holds several.

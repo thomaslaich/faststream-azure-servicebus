@@ -1,8 +1,14 @@
+from __future__ import annotations
+
 import asyncio
 import os
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from faststream_azure_servicebus import ServiceBusBroker
+
+if TYPE_CHECKING:
+    from faststream.types import SendableMessage
 
 EMULATOR_CONNECTION_STRING = (
     "Endpoint=sb://localhost;SharedAccessKeyName=RootManageSharedAccessKey;"
@@ -19,7 +25,10 @@ async def main() -> None:
     broker = ServiceBusBroker(connection_string)
     publisher = broker.publisher(queue=QUEUE)
     consumed = asyncio.Event()
-    payload = {"id": uuid4().hex[:8], "message": "hello from FastStream"}
+    payload: SendableMessage = {
+        "id": uuid4().hex[:8],
+        "message": "hello from FastStream",
+    }
 
     @broker.subscriber(QUEUE)
     async def handle_message(body: dict[str, str]) -> None:

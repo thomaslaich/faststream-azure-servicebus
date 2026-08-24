@@ -18,7 +18,12 @@ NAMESPACE = "sbemulatorns"
 QUEUE_COUNT = 24
 TOPIC_COUNT = 6
 SUBSCRIPTIONS_PER_TOPIC = 2
-EXAMPLE_QUEUES = ("example-queue", "example-requests", "example-replies")
+EXAMPLE_QUEUES = (
+    "example-queue",
+    "example-messagepack",
+    "example-requests",
+    "example-replies",
+)
 
 # Deliberately short so lock-expiry behaviour is testable without slow tests.
 # PT5S is the service minimum.

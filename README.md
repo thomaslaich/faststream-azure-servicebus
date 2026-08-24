@@ -77,6 +77,17 @@ The repository includes runnable
 [`publish/consume`](examples/basic.py) and
 [`request/reply`](examples/request_reply.py) examples for the local emulator.
 
+### Custom serialization
+
+A custom codec owns the encoded bytes, content type, and decoding. Use one for a
+non-JSON wire format such as MessagePack. The runnable
+[`MessagePack example`](examples/messagepack.py) publishes with
+`application/msgpack` and decodes it in the subscriber.
+
+The broker's `serializer=` participates in FastDepends object conversion and the
+default codec's structured-value encoding; it does not select a different wire format
+or content type by itself.
+
 ## Features
 
 Supported today:
@@ -118,6 +129,7 @@ direnv allow                 # or: devenv shell
 just up                      # Service Bus emulator + its SQL Edge backing store
 just example                 # publish and consume one message
 just example-request-reply   # send a request and receive its reply
+just example-messagepack     # publish and consume MessagePack
 just test
 just check                   # treefmt, ruff check, ty
 ```
@@ -131,7 +143,8 @@ when they exit. `just up` and `just down` instead manage a persistent background
 instance; `just logs` attaches to its TUI and container logs. Run
 `process-compose up` directly for the full foreground TUI. The runnable example
 sources are in [`examples/basic.py`](examples/basic.py) and
-[`examples/request_reply.py`](examples/request_reply.py).
+[`examples/request_reply.py`](examples/request_reply.py). The custom codec example is
+in [`examples/messagepack.py`](examples/messagepack.py).
 
 The nightly workflow installs FastStream from upstream `main` so private-API drift
 shows up early without vendoring FastStream in this repository.
