@@ -9,6 +9,10 @@ https://github.com/ag2ai/faststream/issues/822
 
 ## Quickstart
 
+```bash
+uv add faststream-azure-servicebus
+```
+
 ### Publish and consume
 
 ```python
@@ -41,7 +45,7 @@ the namespace. The broker owns the resulting `DefaultAzureCredential` and closes
 on shutdown:
 
 ```bash
-pip install "faststream-azure-servicebus[identity]"
+uv add "faststream-azure-servicebus[identity]"
 ```
 
 ```python
