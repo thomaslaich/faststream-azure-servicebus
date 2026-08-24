@@ -4,16 +4,17 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast, overload
 from unittest.mock import MagicMock
 
+import anyio
 from azure.servicebus.amqp import AmqpMessageBodyType
 from faststream._internal.endpoint.utils import ParserComposition
 from faststream._internal.parser import DefaultCodec
 from faststream._internal.testing.broker import EnterType, TestBroker, change_producer
-from faststream.exceptions import FeatureNotSupportedException
+from faststream.exceptions import SetupError, SubscriberNotFound
 from faststream.message import gen_cor_id
 
 from faststream_azure_servicebus.broker import ServiceBusBroker
 from faststream_azure_servicebus.parser import ServiceBusParser
-from faststream_azure_servicebus.publisher.producer import REQUEST_NOT_SUPPORTED
+from faststream_azure_servicebus.publisher.producer import REPLY_QUEUE_REQUIRED
 from faststream_azure_servicebus.response import DestinationType
 from faststream_azure_servicebus.schemas import QueueDestination, SubscriptionDestination
 
@@ -157,6 +158,7 @@ class FakeProducer:
     ) -> None:
         self.broker = broker
         self.brokers = brokers
+        self.reply_queue = broker.reply_queue
         parser = ServiceBusParser()
         self._parser = ParserComposition(broker._parser, parser.parse_message)
         self._decoder = ParserComposition(broker._decoder, parser.decode_message)
@@ -188,8 +190,40 @@ class FakeProducer:
             )
             await self._route(cmd, message)
 
-    async def request(self, cmd: "ServiceBusPublishCommand") -> None:
-        raise FeatureNotSupportedException(REQUEST_NOT_SUPPORTED)
+    async def request(self, cmd: "ServiceBusPublishCommand") -> PatchedMessage:
+        if not self.reply_queue:
+            raise SetupError(REPLY_QUEUE_REQUIRED)
+
+        incoming = await build_message(
+            cmd.body,
+            headers=cmd.headers,
+            correlation_id=cmd.correlation_id,
+            message_id=cmd.message_id,
+            reply_to=self.reply_queue,
+            subject=cmd.subject,
+            serializer=self.broker.config.fd_config._serializer,
+            codec=self.codec,
+        )
+
+        matches = list(
+            _matching_subscribers(self.brokers, cmd.destination_type, cmd.destination)
+        )
+        if not matches:
+            raise SubscriberNotFound
+
+        with anyio.fail_after(cmd.timeout):
+            subscriber = matches[0]
+            receiver = PatchedReceiver()
+            subscriber._receiver = cast("Any", receiver)
+            result = await subscriber.process_message(cast("Any", incoming))
+
+        return await build_message(
+            result.body,
+            headers=result.headers,
+            correlation_id=result.correlation_id,
+            serializer=self.broker.config.fd_config._serializer,
+            codec=self.codec,
+        )
 
     async def _route(
         self, cmd: "ServiceBusPublishCommand", message: PatchedMessage

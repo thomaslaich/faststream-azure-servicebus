@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -7,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from azure.servicebus.amqp import AmqpMessageBodyType
 from azure.servicebus.exceptions import MessageAlreadySettled
-from faststream.exceptions import FeatureNotSupportedException, IncorrectState, SetupError
+from faststream.exceptions import IncorrectState, SetupError
 from faststream.response.publish_type import PublishType
 from faststream.specification import AsyncAPI
 
@@ -26,7 +27,9 @@ from faststream_azure_servicebus.configs import (
 )
 from faststream_azure_servicebus.message import ServiceBusMessage
 from faststream_azure_servicebus.parser import extract_body, normalize_headers
+from faststream_azure_servicebus.publisher import reply as reply_module
 from faststream_azure_servicebus.publisher.producer import ServiceBusProducer
+from faststream_azure_servicebus.publisher.reply import ServiceBusReplyReceiver
 from faststream_azure_servicebus.response import (
     DestinationType,
     ServiceBusPublishCommand,
@@ -409,11 +412,135 @@ async def test_empty_producer_batch_is_a_noop() -> None:
 
 
 @pytest.mark.asyncio()
-async def test_producer_request_is_not_supported() -> None:
+async def test_producer_request_requires_a_reply_queue() -> None:
     producer = object.__new__(ServiceBusProducer)
+    producer._reply_receiver = None
 
-    with pytest.raises(FeatureNotSupportedException):
+    with pytest.raises(SetupError, match="reply_queue"):
         await producer.request(MagicMock())
+
+
+@pytest.mark.asyncio()
+async def test_producer_request_registers_before_publish_and_cleans_up() -> None:
+    producer = object.__new__(ServiceBusProducer)
+    producer._connected = True
+    dispatcher = MagicMock()
+    dispatcher.start = AsyncMock()
+    producer._reply_receiver = dispatcher
+
+    reply = MagicMock()
+    future = asyncio.get_running_loop().create_future()
+    dispatcher.register.return_value = future
+
+    async def publish(command: Any) -> None:
+        dispatcher.register.assert_called_once_with("correlation")
+        future.set_result(reply)
+
+    producer.publish = AsyncMock(side_effect=publish)  # type: ignore[method-assign]
+    command = MagicMock(correlation_id="correlation", timeout=1)
+
+    assert await producer.request(command) is reply
+    dispatcher.start.assert_awaited_once()
+    dispatcher.unregister.assert_called_once_with("correlation")
+
+
+@pytest.mark.asyncio()
+async def test_producer_disconnect_stops_reply_receiver() -> None:
+    producer = object.__new__(ServiceBusProducer)
+    producer._connected = True
+    dispatcher = MagicMock()
+    dispatcher.stop = AsyncMock()
+    producer._reply_receiver = dispatcher
+
+    await producer.disconnect()
+
+    assert producer._connected is False
+    dispatcher.stop.assert_awaited_once()
+
+
+@pytest.mark.asyncio()
+async def test_reply_receiver_routes_by_correlation_and_discards_late_replies() -> None:
+    receiver = AsyncMock()
+    connection = MagicMock()
+    dispatcher = ServiceBusReplyReceiver(connection, "replies")
+    dispatcher._receiver = receiver
+
+    first = dispatcher.register("first")
+    second = dispatcher.register("second")
+    second_reply = MagicMock(correlation_id="second")
+    first_reply = MagicMock(correlation_id="first")
+    late_reply = MagicMock(correlation_id="late")
+
+    await dispatcher._dispatch(second_reply)
+    await dispatcher._dispatch(late_reply)
+    await dispatcher._dispatch(first_reply)
+
+    assert await first is first_reply
+    assert await second is second_reply
+    assert dispatcher.pending_count == 0
+    assert receiver.complete_message.await_count == 3
+
+
+@pytest.mark.asyncio()
+async def test_reply_receiver_rejects_duplicate_waiters() -> None:
+    dispatcher = ServiceBusReplyReceiver(MagicMock(), "replies")
+    pending = dispatcher.register("duplicate")
+
+    with pytest.raises(SetupError, match="already waiting"):
+        dispatcher.register("duplicate")
+
+    await dispatcher.stop()
+    with pytest.raises(IncorrectState):
+        await pending
+
+
+@pytest.mark.asyncio()
+async def test_reply_receiver_shutdown_fails_pending_waiters() -> None:
+    dispatcher = ServiceBusReplyReceiver(MagicMock(), "replies")
+    pending = dispatcher.register("pending")
+
+    await dispatcher.stop()
+
+    with pytest.raises(IncorrectState, match="stopped"):
+        await pending
+    assert dispatcher.pending_count == 0
+
+
+@pytest.mark.asyncio()
+async def test_reply_receiver_recovers_its_link(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(reply_module, "REPLY_RECEIVE_BACKOFF_SECONDS", 0)
+
+    broken_receiver = AsyncMock()
+    broken_receiver.receive_messages.side_effect = RuntimeError("link failed")
+
+    reply = MagicMock(correlation_id="request")
+    recovered_receiver = AsyncMock()
+    delivered = False
+
+    async def receive_after_recovery(**kwargs: Any) -> list[Any]:
+        nonlocal delivered
+        if not delivered:
+            delivered = True
+            return [reply]
+        await asyncio.Event().wait()
+        return []
+
+    recovered_receiver.receive_messages.side_effect = receive_after_recovery
+
+    connection = MagicMock()
+    connection.client.get_queue_receiver.side_effect = (
+        broken_receiver,
+        recovered_receiver,
+    )
+    dispatcher = ServiceBusReplyReceiver(connection, "replies")
+    pending = dispatcher.register("request")
+
+    await dispatcher.start()
+    assert await asyncio.wait_for(pending, timeout=1) is reply
+    await dispatcher.stop()
+
+    broken_receiver.close.assert_awaited_once()
+    recovered_receiver.complete_message.assert_awaited_once_with(reply)
 
 
 class FakeBatch:

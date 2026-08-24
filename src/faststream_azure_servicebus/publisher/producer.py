@@ -1,18 +1,23 @@
-from typing import TYPE_CHECKING, Any, NoReturn, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
+import anyio
 from azure.servicebus import ServiceBusMessageBatch
 from azure.servicebus.exceptions import MessageSizeExceededError
 from faststream._internal.endpoint.utils import ParserComposition
 from faststream._internal.parser import DefaultCodec
 from faststream._internal.producer import ProducerProto
-from faststream.exceptions import FeatureNotSupportedException
+from faststream.exceptions import IncorrectState, SetupError
 from typing_extensions import override
 
 from faststream_azure_servicebus.parser import ServiceBusParser
+from faststream_azure_servicebus.publisher.reply import ServiceBusReplyReceiver
 from faststream_azure_servicebus.response import ServiceBusPublishCommand
 
 if TYPE_CHECKING:
-    from azure.servicebus import ServiceBusMessage as AzureServiceBusMessage
+    from azure.servicebus import (
+        ServiceBusMessage as AzureServiceBusMessage,
+        ServiceBusReceivedMessage,
+    )
     from azure.servicebus.aio import ServiceBusSender
     from fast_depends.library.serializer import SerializerProto
     from faststream._internal.parser import CodecProto
@@ -22,9 +27,13 @@ if TYPE_CHECKING:
 
 
 REQUEST_NOT_SUPPORTED = (
-    "ServiceBusBroker doesn't support `request` yet. Request/reply over Service Bus "
-    "needs a session-enabled reply entity, which arrives with session support."
+    "ServiceBusPublisher doesn't support `request`; use ServiceBusBroker.request "
+    "with a configured reply_queue."
 )
+REPLY_QUEUE_REQUIRED = (
+    "Configure ServiceBusBroker(reply_queue=...) before calling request()."
+)
+BROKER_NOT_CONNECTED = "Request/reply requires a connected ServiceBusBroker."
 
 
 class ServiceBusProducer(ProducerProto[ServiceBusPublishCommand]):
@@ -39,10 +48,16 @@ class ServiceBusProducer(ProducerProto[ServiceBusPublishCommand]):
         connection: "ServiceBusConnectionState",
         parser: Optional["CustomCallable"],
         decoder: Optional["CustomCallable"],
+        reply_queue: str | None = None,
         serializer: Optional["SerializerProto"] = None,
         codec: Optional["CodecProto"] = None,
     ) -> None:
         self._connection = connection
+        self.reply_queue = reply_queue
+        self._reply_receiver = (
+            ServiceBusReplyReceiver(connection, reply_queue) if reply_queue else None
+        )
+        self._connected = False
 
         default = ServiceBusParser()
         self._parser = ParserComposition(parser, default.parse_message)  # pyright: ignore[reportIncompatibleMethodOverride]
@@ -59,6 +74,12 @@ class ServiceBusProducer(ProducerProto[ServiceBusPublishCommand]):
         self.serializer = serializer
         if codec is not None:
             self.codec = codec
+        self._connected = True
+
+    async def disconnect(self) -> None:
+        self._connected = False
+        if self._reply_receiver is not None:
+            await self._reply_receiver.stop()
 
     @override
     async def publish(self, cmd: "ServiceBusPublishCommand") -> None:
@@ -86,8 +107,31 @@ class ServiceBusProducer(ProducerProto[ServiceBusPublishCommand]):
                 await sender.send_messages(batch)
 
     @override
-    async def request(self, cmd: "ServiceBusPublishCommand") -> NoReturn:
-        raise FeatureNotSupportedException(REQUEST_NOT_SUPPORTED)
+    async def request(
+        self,
+        cmd: "ServiceBusPublishCommand",
+    ) -> "ServiceBusReceivedMessage":
+        if self._reply_receiver is None:
+            raise SetupError(REPLY_QUEUE_REQUIRED)
+        if not self._connected:
+            raise IncorrectState(BROKER_NOT_CONNECTED)
+
+        correlation_id = cmd.correlation_id
+        assert correlation_id is not None
+
+        await self._reply_receiver.start()
+        future = self._reply_receiver.register(correlation_id)
+
+        try:
+            with anyio.fail_after(cmd.timeout):
+                await self.publish(cmd)
+                return await future
+        finally:
+            self._reply_receiver.unregister(correlation_id)
+            if future.done() and not future.cancelled():
+                # If publishing failed while shutdown also failed the waiter,
+                # retrieve that exception so the abandoned future stays quiet.
+                future.exception()
 
     async def _encode(
         self,

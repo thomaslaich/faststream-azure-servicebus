@@ -42,9 +42,19 @@ Supported in the first release line:
   (`complete` / `abandon` / `dead-letter`)
 - Background message-lock renewal for long-running handlers
 - Batch publishing
+- Broker request/reply over an explicitly configured reply queue
 
-Planned, not yet implemented: sessions, scheduled messages, deferral, dead-letter
-queue consumption, the FastAPI plugin, and the OpenTelemetry and Prometheus providers.
+Request/reply uses one shared receiver and correlates concurrent responses. The reply
+queue must already exist and be exclusive to that broker instance:
+
+```python
+broker = ServiceBusBroker(connection_string, reply_queue="rpc-replies")
+response = await broker.request({"id": 1}, queue="commands", timeout=10)
+body = await response.decode()
+```
+
+Planned, not yet implemented: sessions, deferred-message retrieval, dead-letter queue
+consumption, the FastAPI plugin, and the OpenTelemetry and Prometheus providers.
 
 ## Development
 

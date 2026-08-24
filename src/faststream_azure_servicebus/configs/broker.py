@@ -25,6 +25,7 @@ class ServiceBusBrokerConfig(BrokerConfig):
         await self.connection.connect()
 
     async def disconnect(self) -> None:
+        await self.producer.disconnect()
         await self.connection.disconnect()
 
 

@@ -3,8 +3,8 @@
 `faststream-azure-servicebus` is a pre-alpha Azure Service Bus broker for
 FastStream. The current baseline supports queue and topic-subscription consumers,
 queue and topic publishing, batch publishing, message settlement, concurrent
-handlers, lock renewal, replies, AsyncAPI subscriber schemas, and connected tests
-against the Service Bus emulator.
+handlers, lock renewal, replies, broker request/reply, AsyncAPI subscriber schemas,
+and connected tests against the Service Bus emulator.
 
 ## M3: Complete the broker surface and routers (complete)
 
@@ -47,16 +47,16 @@ Azure namespace, and the offline suite satisfies the repository's coverage gate.
 Acceptance criteria: static checks, offline tests, connected tests, coverage, and
 nightly FastStream compatibility all pass.
 
-## M6: Add broker request/reply
+## M6: Add broker request/reply (complete)
 
-- Add a broker `request()` API with an explicitly configured reply queue.
-- Set and preserve `message_id`, `correlation_id`, and `reply_to` properties.
-- Route concurrent outstanding requests to the correct waiter.
-- Define timeout, cancellation, late-reply, shutdown, and connection-recovery
+- [x] Add a broker `request()` API with an explicitly configured reply queue.
+- [x] Set and preserve `message_id`, `correlation_id`, and `reply_to` properties.
+- [x] Route concurrent outstanding requests to the correct waiter.
+- [x] Define timeout, cancellation, late-reply, shutdown, and connection-recovery
   behavior without leaking receivers or background tasks.
-- Support queue and topic request destinations without requiring sessions.
-- Provide equivalent in-memory behavior through `TestServiceBusBroker`.
-- Cover the protocol with offline and connected emulator tests.
+- [x] Support queue and topic request destinations without requiring sessions.
+- [x] Provide equivalent in-memory behavior through `TestServiceBusBroker`.
+- [x] Cover the protocol with offline and connected emulator tests.
 
 Acceptance criteria: applications can send concurrent requests and receive the
 matching replies through both the real broker and `TestServiceBusBroker`, with

@@ -210,10 +210,12 @@ async def test_publish_without_a_destination_is_an_error(
         await broker.publish({"a": 1})
 
 
-async def test_request_is_not_supported(broker: ServiceBusBroker) -> None:
-    from faststream.exceptions import FeatureNotSupportedException
+async def test_request_requires_a_configured_reply_queue(
+    broker: ServiceBusBroker,
+) -> None:
+    from faststream.exceptions import SetupError
 
-    with pytest.raises(FeatureNotSupportedException):
+    with pytest.raises(SetupError, match="reply_queue"):
         await broker.request({"a": 1}, queue="whatever")
 
 

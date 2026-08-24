@@ -1,7 +1,7 @@
 import logging
 import re
 from collections.abc import Iterable, Sequence
-from typing import TYPE_CHECKING, Any, NoReturn, Optional, Union
+from typing import TYPE_CHECKING, Any, Optional, Union
 
 import anyio
 from azure.servicebus import ServiceBusReceivedMessage
@@ -10,7 +10,6 @@ from faststream._internal.broker import BrokerUsecase
 from faststream._internal.constants import EMPTY
 from faststream._internal.context.repository import ContextRepo
 from faststream._internal.di import FastDependsConfig
-from faststream.exceptions import FeatureNotSupportedException
 from faststream.message import gen_cor_id
 from faststream.response.publish_type import PublishType
 from faststream.specification.schema.broker import BrokerSpec
@@ -23,10 +22,7 @@ from faststream_azure_servicebus.configs import (
     ServiceBusConnectionState,
     build_client_factory,
 )
-from faststream_azure_servicebus.publisher.producer import (
-    REQUEST_NOT_SUPPORTED,
-    ServiceBusProducer,
-)
+from faststream_azure_servicebus.publisher.producer import ServiceBusProducer
 from faststream_azure_servicebus.response import ServiceBusPublishCommand
 
 if TYPE_CHECKING:
@@ -43,6 +39,8 @@ if TYPE_CHECKING:
     from faststream.middlewares import AckPolicy
     from faststream.security import BaseSecurity
     from faststream.specification.schema.extra.tag import Tag, TagDict
+
+    from faststream_azure_servicebus.message import ServiceBusMessage
 
 # `Endpoint=sb://<host>/;SharedAccessKeyName=...` — the only part of a connection
 # string worth putting in the AsyncAPI document (it carries no secret).
@@ -78,6 +76,7 @@ class ServiceBusBroker(  # pyright: ignore[reportIncompatibleMethodOverride]
         *,
         fully_qualified_namespace: str | None = None,
         credential: Any = None,
+        reply_queue: str | None = None,
         # client options
         retry_total: int = 3,
         retry_backoff_factor: float = 0.8,
@@ -118,6 +117,8 @@ class ServiceBusBroker(  # pyright: ignore[reportIncompatibleMethodOverride]
         fully_qualified_namespace: `<namespace>.servicebus.windows.net`.
         credential: A `TokenCredential` from `azure-identity`, e.g.
             `DefaultAzureCredential()`. Requires `fully_qualified_namespace`.
+        reply_queue: Existing queue used exclusively by this broker instance to
+            receive replies for `request()` calls.
         retry_total: How many times the SDK retries a failed operation.
         retry_backoff_factor: Base of the SDK's exponential retry backoff.
         retry_backoff_max: Ceiling on the SDK's retry backoff, in seconds.
@@ -170,11 +171,13 @@ class ServiceBusBroker(  # pyright: ignore[reportIncompatibleMethodOverride]
                 options=options,
             ),
         )
+        self.reply_queue = reply_queue
 
         producer = ServiceBusProducer(
             connection=connection,
             parser=parser,
             decoder=decoder,
+            reply_queue=reply_queue,
             serializer=None if serializer is EMPTY else serializer,
             codec=codec,
         )
@@ -343,8 +346,50 @@ class ServiceBusBroker(  # pyright: ignore[reportIncompatibleMethodOverride]
         await super()._basic_publish_batch(cmd, producer=self.config.producer)
 
     @override
-    async def request(self, *args: Any, **kwargs: Any) -> NoReturn:
-        raise FeatureNotSupportedException(REQUEST_NOT_SUPPORTED)
+    async def request(  # type: ignore[override]
+        self,
+        message: "SendableMessage" = None,
+        queue: str | None = None,
+        *,
+        topic: str | None = None,
+        timeout: float | None = 30.0,
+        headers: dict[str, Any] | None = None,
+        correlation_id: str | None = None,
+        message_id: str | None = None,
+        subject: str | None = None,
+        session_id: str | None = None,
+        partition_key: str | None = None,
+        time_to_live: Optional["timedelta"] = None,
+        scheduled_enqueue_time: Optional["datetime"] = None,
+    ) -> "ServiceBusMessage":  # ty: ignore[invalid-method-override]
+        """Publish a request and wait for its correlated reply.
+
+        The broker must be constructed with an existing `reply_queue`. One
+        shared receiver serves every concurrent request made by this broker.
+        """
+        identifier = message_id or gen_cor_id()
+        cmd = ServiceBusPublishCommand(
+            message,
+            queue=queue,
+            topic=topic,
+            headers=headers,
+            correlation_id=correlation_id or gen_cor_id(),
+            message_id=identifier,
+            reply_to=self.reply_queue or "",
+            subject=subject,
+            session_id=session_id,
+            partition_key=partition_key,
+            time_to_live=time_to_live,
+            scheduled_enqueue_time=scheduled_enqueue_time,
+            timeout=timeout,
+            _publish_type=PublishType.REQUEST,
+        )
+
+        response: ServiceBusMessage = await super()._basic_request(
+            cmd,
+            producer=self.config.producer,
+        )
+        return response
 
     @override
     async def ping(self, timeout: float | None = 3) -> bool:
