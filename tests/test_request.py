@@ -22,11 +22,8 @@ TIMEOUT = 10
 
 
 @pytest_asyncio.fixture
-async def request_broker(reply_queue: str) -> AsyncGenerator[ServiceBusBroker, None]:
-    broker = ServiceBusBroker(
-        connection_string(),
-        reply_queue=reply_queue,
-    )
+async def request_broker() -> AsyncGenerator[ServiceBusBroker, None]:
+    broker = ServiceBusBroker(connection_string())
     async with broker:
         yield broker
 
@@ -34,6 +31,7 @@ async def request_broker(reply_queue: str) -> AsyncGenerator[ServiceBusBroker, N
 async def test_queue_request_reply_preserves_protocol_properties(
     request_broker: ServiceBusBroker,
     queue: str,
+    reply_queue: str,
 ) -> None:
     properties: dict[str, Any] = {}
 
@@ -53,6 +51,7 @@ async def test_queue_request_reply_preserves_protocol_properties(
     response = await request_broker.request(
         {"value": 21},
         queue,
+        reply_to=reply_queue,
         timeout=TIMEOUT,
         message_id="request-message",
         correlation_id="request-correlation",
@@ -63,13 +62,14 @@ async def test_queue_request_reply_preserves_protocol_properties(
     assert properties == {
         "message_id": "request-message",
         "correlation_id": "request-correlation",
-        "reply_to": request_broker.reply_queue,
+        "reply_to": reply_queue,
     }
 
 
 async def test_concurrent_requests_are_correlated(
     request_broker: ServiceBusBroker,
     queue: str,
+    reply_queue: str,
 ) -> None:
     @request_broker.subscriber(queue, max_workers=5, prefetch_count=5)
     async def handler(body: dict[str, int]) -> dict[str, int]:
@@ -82,6 +82,7 @@ async def test_concurrent_requests_are_correlated(
             request_broker.request(
                 {"value": value},
                 queue,
+                reply_to=reply_queue,
                 timeout=TIMEOUT,
                 correlation_id=f"request-{value}",
             )
@@ -100,6 +101,7 @@ async def test_concurrent_requests_are_correlated(
 async def test_request_supports_topic_destinations(
     request_broker: ServiceBusBroker,
     topic: str,
+    reply_queue: str,
 ) -> None:
     @request_broker.subscriber(topic=topic, subscription="sub-0")
     async def handler(body: dict[str, int]) -> dict[str, int]:
@@ -109,6 +111,7 @@ async def test_request_supports_topic_destinations(
     response = await request_broker.request(
         {"value": 41},
         topic=topic,
+        reply_to=reply_queue,
         timeout=TIMEOUT,
     )
 
@@ -118,6 +121,7 @@ async def test_request_supports_topic_destinations(
 async def test_timeout_removes_waiter_and_late_reply_is_discarded(
     request_broker: ServiceBusBroker,
     queue: str,
+    reply_queue: str,
 ) -> None:
     first_finished = asyncio.Event()
 
@@ -132,6 +136,7 @@ async def test_timeout_removes_waiter_and_late_reply_is_discarded(
     warmup = await request_broker.request(
         {"value": "warmup", "slow": False},
         queue,
+        reply_to=reply_queue,
         timeout=TIMEOUT,
     )
     assert await warmup.decode() == {"value": "warmup"}
@@ -140,6 +145,7 @@ async def test_timeout_removes_waiter_and_late_reply_is_discarded(
         await request_broker.request(
             {"value": "late", "slow": True},
             queue,
+            reply_to=reply_queue,
             timeout=0.1,
             correlation_id="timed-out",
         )
@@ -148,18 +154,19 @@ async def test_timeout_removes_waiter_and_late_reply_is_discarded(
     response = await request_broker.request(
         {"value": "current", "slow": False},
         queue,
+        reply_to=reply_queue,
         timeout=TIMEOUT,
         correlation_id="current",
     )
 
     assert await response.decode() == {"value": "current"}
-    assert request_broker.config.producer._reply_receiver is not None
-    assert request_broker.config.producer._reply_receiver.pending_count == 0
+    assert request_broker.config.producer._reply_receivers[reply_queue].pending_count == 0
 
 
 async def test_cancellation_removes_waiter(
     request_broker: ServiceBusBroker,
     queue: str,
+    reply_queue: str,
 ) -> None:
     started = asyncio.Event()
     release = asyncio.Event()
@@ -173,7 +180,13 @@ async def test_cancellation_removes_waiter(
 
     await request_broker.start()
     request = asyncio.create_task(
-        request_broker.request({}, queue, timeout=TIMEOUT, correlation_id="cancelled")
+        request_broker.request(
+            {},
+            queue,
+            reply_to=reply_queue,
+            timeout=TIMEOUT,
+            correlation_id="cancelled",
+        )
     )
     await asyncio.wait_for(started.wait(), timeout=TIMEOUT)
 
@@ -181,8 +194,7 @@ async def test_cancellation_removes_waiter(
     with pytest.raises(asyncio.CancelledError):
         await request
 
-    assert request_broker.config.producer._reply_receiver is not None
-    assert request_broker.config.producer._reply_receiver.pending_count == 0
+    assert request_broker.config.producer._reply_receivers[reply_queue].pending_count == 0
 
     release.set()
     await asyncio.wait_for(finished.wait(), timeout=TIMEOUT)
@@ -191,12 +203,19 @@ async def test_cancellation_removes_waiter(
 async def test_shutdown_fails_pending_request(
     request_broker: ServiceBusBroker,
     queue: str,
+    reply_queue: str,
     raw_client: ServiceBusClient,
 ) -> None:
     await request_broker.start()
-    request = asyncio.create_task(request_broker.request({}, queue, timeout=TIMEOUT))
+    request = asyncio.create_task(
+        request_broker.request(
+            {},
+            queue,
+            reply_to=reply_queue,
+            timeout=TIMEOUT,
+        )
+    )
 
-    assert request_broker.config.producer._reply_receiver is not None
     async with raw_client.get_queue_receiver(
         queue_name=queue,
         max_wait_time=TIMEOUT,
@@ -207,7 +226,8 @@ async def test_shutdown_fails_pending_request(
         )
         await receiver.complete_message(published)
 
-    assert request_broker.config.producer._reply_receiver.pending_count == 1
+    assert reply_queue in request_broker.config.producer._reply_receivers
+    assert request_broker.config.producer._reply_receivers[reply_queue].pending_count == 1
     await request_broker.stop()
 
     with pytest.raises(IncorrectState, match="stopped"):
@@ -217,6 +237,7 @@ async def test_shutdown_fails_pending_request(
 async def test_request_reply_recovers_after_broker_restart(
     request_broker: ServiceBusBroker,
     queue: str,
+    reply_queue: str,
 ) -> None:
     @request_broker.subscriber(queue)
     async def handler(body: dict[str, int]) -> dict[str, int]:
@@ -226,6 +247,7 @@ async def test_request_reply_recovers_after_broker_restart(
     first = await request_broker.request(
         {"attempt": 1},
         queue,
+        reply_to=reply_queue,
         timeout=TIMEOUT,
     )
 
@@ -234,6 +256,7 @@ async def test_request_reply_recovers_after_broker_restart(
     second = await request_broker.request(
         {"attempt": 2},
         queue,
+        reply_to=reply_queue,
         timeout=TIMEOUT,
     )
 

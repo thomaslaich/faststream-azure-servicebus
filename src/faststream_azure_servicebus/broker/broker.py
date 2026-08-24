@@ -76,7 +76,6 @@ class ServiceBusBroker(  # pyright: ignore[reportIncompatibleMethodOverride]
         *,
         fully_qualified_namespace: str | None = None,
         credential: Any = None,
-        reply_queue: str | None = None,
         # client options
         retry_total: int = 3,
         retry_backoff_factor: float = 0.8,
@@ -117,8 +116,6 @@ class ServiceBusBroker(  # pyright: ignore[reportIncompatibleMethodOverride]
         fully_qualified_namespace: `<namespace>.servicebus.windows.net`.
         credential: A `TokenCredential` from `azure-identity`, e.g.
             `DefaultAzureCredential()`. Requires `fully_qualified_namespace`.
-        reply_queue: Existing queue used exclusively by this broker instance to
-            receive replies for `request()` calls.
         retry_total: How many times the SDK retries a failed operation.
         retry_backoff_factor: Base of the SDK's exponential retry backoff.
         retry_backoff_max: Ceiling on the SDK's retry backoff, in seconds.
@@ -171,13 +168,10 @@ class ServiceBusBroker(  # pyright: ignore[reportIncompatibleMethodOverride]
                 options=options,
             ),
         )
-        self.reply_queue = reply_queue
-
         producer = ServiceBusProducer(
             connection=connection,
             parser=parser,
             decoder=decoder,
-            reply_queue=reply_queue,
             serializer=None if serializer is EMPTY else serializer,
             codec=codec,
         )
@@ -352,6 +346,7 @@ class ServiceBusBroker(  # pyright: ignore[reportIncompatibleMethodOverride]
         queue: str | None = None,
         *,
         topic: str | None = None,
+        reply_to: str,
         timeout: float | None = 30.0,
         headers: dict[str, Any] | None = None,
         correlation_id: str | None = None,
@@ -364,8 +359,8 @@ class ServiceBusBroker(  # pyright: ignore[reportIncompatibleMethodOverride]
     ) -> "ServiceBusMessage":  # ty: ignore[invalid-method-override]
         """Publish a request and wait for its correlated reply.
 
-        The broker must be constructed with an existing `reply_queue`. One
-        shared receiver serves every concurrent request made by this broker.
+        `reply_to` must name an existing queue that this caller owns. Requests
+        using the same reply queue share one receiver and are correlated by id.
         """
         identifier = message_id or gen_cor_id()
         cmd = ServiceBusPublishCommand(
@@ -375,7 +370,7 @@ class ServiceBusBroker(  # pyright: ignore[reportIncompatibleMethodOverride]
             headers=headers,
             correlation_id=correlation_id or gen_cor_id(),
             message_id=identifier,
-            reply_to=self.reply_queue or "",
+            reply_to=reply_to,
             subject=subject,
             session_id=session_id,
             partition_key=partition_key,

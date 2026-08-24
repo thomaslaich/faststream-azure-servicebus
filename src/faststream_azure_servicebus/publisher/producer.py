@@ -28,10 +28,10 @@ if TYPE_CHECKING:
 
 REQUEST_NOT_SUPPORTED = (
     "ServiceBusPublisher doesn't support `request`; use ServiceBusBroker.request "
-    "with a configured reply_queue."
+    "with `reply_to`."
 )
-REPLY_QUEUE_REQUIRED = (
-    "Configure ServiceBusBroker(reply_queue=...) before calling request()."
+REPLY_TO_REQUIRED = (
+    "Pass an existing reply queue as `reply_to` when calling ServiceBusBroker.request()."
 )
 BROKER_NOT_CONNECTED = "Request/reply requires a connected ServiceBusBroker."
 
@@ -48,15 +48,11 @@ class ServiceBusProducer(ProducerProto[ServiceBusPublishCommand]):
         connection: "ServiceBusConnectionState",
         parser: Optional["CustomCallable"],
         decoder: Optional["CustomCallable"],
-        reply_queue: str | None = None,
         serializer: Optional["SerializerProto"] = None,
         codec: Optional["CodecProto"] = None,
     ) -> None:
         self._connection = connection
-        self.reply_queue = reply_queue
-        self._reply_receiver = (
-            ServiceBusReplyReceiver(connection, reply_queue) if reply_queue else None
-        )
+        self._reply_receivers: dict[str, ServiceBusReplyReceiver] = {}
         self._connected = False
 
         default = ServiceBusParser()
@@ -78,8 +74,8 @@ class ServiceBusProducer(ProducerProto[ServiceBusPublishCommand]):
 
     async def disconnect(self) -> None:
         self._connected = False
-        if self._reply_receiver is not None:
-            await self._reply_receiver.stop()
+        for receiver in self._reply_receivers.values():
+            await receiver.stop()
 
     @override
     async def publish(self, cmd: "ServiceBusPublishCommand") -> None:
@@ -111,23 +107,30 @@ class ServiceBusProducer(ProducerProto[ServiceBusPublishCommand]):
         self,
         cmd: "ServiceBusPublishCommand",
     ) -> "ServiceBusReceivedMessage":
-        if self._reply_receiver is None:
-            raise SetupError(REPLY_QUEUE_REQUIRED)
+        if not cmd.reply_to:
+            raise SetupError(REPLY_TO_REQUIRED)
         if not self._connected:
             raise IncorrectState(BROKER_NOT_CONNECTED)
 
         correlation_id = cmd.correlation_id
         assert correlation_id is not None
 
-        await self._reply_receiver.start()
-        future = self._reply_receiver.register(correlation_id)
+        receiver = self._reply_receivers.get(cmd.reply_to)
+        if receiver is None:
+            receiver = self._reply_receivers[cmd.reply_to] = ServiceBusReplyReceiver(
+                self._connection,
+                cmd.reply_to,
+            )
+
+        await receiver.start()
+        future = receiver.register(correlation_id)
 
         try:
             with anyio.fail_after(cmd.timeout):
                 await self.publish(cmd)
                 return await future
         finally:
-            self._reply_receiver.unregister(correlation_id)
+            receiver.unregister(correlation_id)
             if future.done() and not future.cancelled():
                 # If publishing failed while shutdown also failed the waiter,
                 # retrieve that exception so the abandoned future stays quiet.

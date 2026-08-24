@@ -101,7 +101,7 @@ async def test_test_broker_routes_between_multiple_brokers() -> None:
 
 @pytest.mark.asyncio()
 async def test_test_broker_request_reply_preserves_protocol_properties() -> None:
-    broker = ServiceBusBroker("Endpoint=sb://unused", reply_queue="replies")
+    broker = ServiceBusBroker("Endpoint=sb://unused")
     properties: dict[str, Any] = {}
 
     @broker.subscriber(queue="requests")
@@ -117,6 +117,7 @@ async def test_test_broker_request_reply_preserves_protocol_properties() -> None
         response = await broker.request(
             {"value": 21},
             queue="requests",
+            reply_to="replies",
             message_id="request-message",
             correlation_id="request-correlation",
         )
@@ -132,7 +133,7 @@ async def test_test_broker_request_reply_preserves_protocol_properties() -> None
 
 @pytest.mark.asyncio()
 async def test_test_broker_concurrent_requests_match_their_replies() -> None:
-    broker = ServiceBusBroker("Endpoint=sb://unused", reply_queue="replies")
+    broker = ServiceBusBroker("Endpoint=sb://unused")
 
     @broker.subscriber(queue="requests")
     async def handler(body: dict[str, float]) -> dict[str, float]:
@@ -144,11 +145,13 @@ async def test_test_broker_concurrent_requests_match_their_replies() -> None:
             broker.request(
                 {"value": 1, "delay": 0.02},
                 queue="requests",
+                reply_to="slow-replies",
                 correlation_id="slow",
             ),
             broker.request(
                 {"value": 2, "delay": 0.0},
                 queue="requests",
+                reply_to="fast-replies",
                 correlation_id="fast",
             ),
         )
@@ -161,21 +164,23 @@ async def test_test_broker_concurrent_requests_match_their_replies() -> None:
 
 @pytest.mark.asyncio()
 async def test_test_broker_request_supports_topic_destinations() -> None:
-    broker = ServiceBusBroker("Endpoint=sb://unused", reply_queue="replies")
+    broker = ServiceBusBroker("Endpoint=sb://unused")
 
     @broker.subscriber(topic="requests", subscription="worker")
     async def handler(body: dict[str, int]) -> dict[str, int]:
         return {"answer": body["value"] + 1}
 
     async with TestServiceBusBroker(broker):
-        response = await broker.request({"value": 41}, topic="requests")
+        response = await broker.request(
+            {"value": 41}, topic="requests", reply_to="replies"
+        )
 
     assert await response.decode() == {"answer": 42}
 
 
 @pytest.mark.asyncio()
 async def test_test_broker_request_times_out() -> None:
-    broker = ServiceBusBroker("Endpoint=sb://unused", reply_queue="replies")
+    broker = ServiceBusBroker("Endpoint=sb://unused")
 
     @broker.subscriber(queue="requests")
     async def handler() -> None:
@@ -183,4 +188,4 @@ async def test_test_broker_request_times_out() -> None:
 
     async with TestServiceBusBroker(broker):
         with pytest.raises(TimeoutError):
-            await broker.request({}, queue="requests", timeout=0.01)
+            await broker.request({}, queue="requests", reply_to="replies", timeout=0.01)

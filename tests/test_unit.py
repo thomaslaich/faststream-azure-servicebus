@@ -412,21 +412,21 @@ async def test_empty_producer_batch_is_a_noop() -> None:
 
 
 @pytest.mark.asyncio()
-async def test_producer_request_requires_a_reply_queue() -> None:
+async def test_producer_request_requires_reply_to() -> None:
     producer = object.__new__(ServiceBusProducer)
-    producer._reply_receiver = None
 
-    with pytest.raises(SetupError, match="reply_queue"):
-        await producer.request(MagicMock())
+    with pytest.raises(SetupError, match="reply_to"):
+        await producer.request(MagicMock(reply_to=""))
 
 
 @pytest.mark.asyncio()
 async def test_producer_request_registers_before_publish_and_cleans_up() -> None:
     producer = object.__new__(ServiceBusProducer)
     producer._connected = True
+    producer._connection = MagicMock()
+    producer._reply_receivers = {}
     dispatcher = MagicMock()
     dispatcher.start = AsyncMock()
-    producer._reply_receiver = dispatcher
 
     reply = MagicMock()
     future = asyncio.get_running_loop().create_future()
@@ -437,20 +437,75 @@ async def test_producer_request_registers_before_publish_and_cleans_up() -> None
         future.set_result(reply)
 
     producer.publish = AsyncMock(side_effect=publish)  # type: ignore[method-assign]
-    command = MagicMock(correlation_id="correlation", timeout=1)
+    command = MagicMock(
+        correlation_id="correlation",
+        reply_to="replies",
+        timeout=1,
+    )
 
-    assert await producer.request(command) is reply
+    with patch(
+        "faststream_azure_servicebus.publisher.producer.ServiceBusReplyReceiver",
+        return_value=dispatcher,
+    ) as receiver_type:
+        assert await producer.request(command) is reply
+
+    receiver_type.assert_called_once_with(producer._connection, "replies")
+    assert producer._reply_receivers == {"replies": dispatcher}
     dispatcher.start.assert_awaited_once()
     dispatcher.unregister.assert_called_once_with("correlation")
 
 
 @pytest.mark.asyncio()
-async def test_producer_disconnect_stops_reply_receiver() -> None:
+async def test_producer_uses_distinct_receivers_for_reply_queues() -> None:
+    producer = object.__new__(ServiceBusProducer)
+    producer._connected = True
+    producer._connection = MagicMock()
+    producer._reply_receivers = {}
+    producer.publish = AsyncMock()  # type: ignore[method-assign]
+
+    dispatchers = []
+    replies = [MagicMock(), MagicMock()]
+    for reply in replies:
+        dispatcher = MagicMock()
+        dispatcher.start = AsyncMock()
+        future = asyncio.get_running_loop().create_future()
+        future.set_result(reply)
+        dispatcher.register.return_value = future
+        dispatchers.append(dispatcher)
+
+    with patch(
+        "faststream_azure_servicebus.publisher.producer.ServiceBusReplyReceiver",
+        side_effect=dispatchers,
+    ) as receiver_type:
+        results = [
+            await producer.request(
+                MagicMock(
+                    correlation_id="shared-correlation",
+                    reply_to=reply_to,
+                    timeout=1,
+                )
+            )
+            for reply_to in ("client-a-replies", "client-b-replies")
+        ]
+
+    assert results == replies
+    assert receiver_type.call_args_list == [
+        ((producer._connection, "client-a-replies"),),
+        ((producer._connection, "client-b-replies"),),
+    ]
+    assert set(producer._reply_receivers) == {
+        "client-a-replies",
+        "client-b-replies",
+    }
+
+
+@pytest.mark.asyncio()
+async def test_producer_disconnect_stops_reply_receivers() -> None:
     producer = object.__new__(ServiceBusProducer)
     producer._connected = True
     dispatcher = MagicMock()
     dispatcher.stop = AsyncMock()
-    producer._reply_receiver = dispatcher
+    producer._reply_receivers = {"replies": dispatcher}
 
     await producer.disconnect()
 

@@ -38,18 +38,14 @@ async def publish() -> None:
 
 ### Request and reply
 
-Request/reply requires a pre-existing reply queue that is exclusive to the broker
-instance:
+Request/reply requires a pre-existing reply queue owned by the caller:
 
 ```python
 import asyncio
 
 from faststream_azure_servicebus import ServiceBusBroker
 
-broker = ServiceBusBroker(
-    "Endpoint=sb://<namespace>.servicebus.windows.net/;...",
-    reply_queue="rpc-replies",
-)
+broker = ServiceBusBroker("Endpoint=sb://<namespace>.servicebus.windows.net/;...")
 
 
 @broker.subscriber(queue="commands")
@@ -63,6 +59,7 @@ async def main() -> None:
         response = await broker.request(
             {"value": 21},
             queue="commands",
+            reply_to="rpc-replies",
             timeout=10,
         )
         print(await response.decode())  # {'answer': 42}

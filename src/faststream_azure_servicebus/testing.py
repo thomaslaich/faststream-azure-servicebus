@@ -14,7 +14,7 @@ from faststream.message import gen_cor_id
 
 from faststream_azure_servicebus.broker import ServiceBusBroker
 from faststream_azure_servicebus.parser import ServiceBusParser
-from faststream_azure_servicebus.publisher.producer import REPLY_QUEUE_REQUIRED
+from faststream_azure_servicebus.publisher.producer import REPLY_TO_REQUIRED
 from faststream_azure_servicebus.response import DestinationType
 from faststream_azure_servicebus.schemas import QueueDestination, SubscriptionDestination
 
@@ -158,7 +158,6 @@ class FakeProducer:
     ) -> None:
         self.broker = broker
         self.brokers = brokers
-        self.reply_queue = broker.reply_queue
         parser = ServiceBusParser()
         self._parser = ParserComposition(broker._parser, parser.parse_message)
         self._decoder = ParserComposition(broker._decoder, parser.decode_message)
@@ -191,15 +190,15 @@ class FakeProducer:
             await self._route(cmd, message)
 
     async def request(self, cmd: "ServiceBusPublishCommand") -> PatchedMessage:
-        if not self.reply_queue:
-            raise SetupError(REPLY_QUEUE_REQUIRED)
+        if not cmd.reply_to:
+            raise SetupError(REPLY_TO_REQUIRED)
 
         incoming = await build_message(
             cmd.body,
             headers=cmd.headers,
             correlation_id=cmd.correlation_id,
             message_id=cmd.message_id,
-            reply_to=self.reply_queue,
+            reply_to=cmd.reply_to,
             subject=cmd.subject,
             serializer=self.broker.config.fd_config._serializer,
             codec=self.codec,
