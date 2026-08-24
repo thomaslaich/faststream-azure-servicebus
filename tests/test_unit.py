@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from azure.servicebus.amqp import AmqpMessageBodyType
@@ -256,9 +256,9 @@ async def test_connection_state_ping_without_a_probe() -> None:
     client.close.assert_awaited_once()
 
 
-def test_client_factory_requires_complete_credentials() -> None:
+def test_client_factory_requires_connection_information() -> None:
     with pytest.raises(IncorrectState, match="Provide either"):
-        build_client_factory(None, "example.servicebus.windows.net", None, {})
+        build_client_factory(None, None, None, {})
 
 
 @pytest.mark.parametrize(
@@ -291,6 +291,94 @@ def test_client_factory_builds_a_credential_client() -> None:
         credential=credential,
         retry_total=7,
     )
+
+
+def test_default_credential_requires_identity_extra() -> None:
+    with (
+        patch.dict("sys.modules", {"azure.identity.aio": None}),
+        pytest.raises(ImportError, match=r"\[identity\]"),
+    ):
+        build_client_factory(
+            None,
+            "example.servicebus.windows.net",
+            None,
+            {},
+        )
+
+
+@pytest.mark.asyncio()
+async def test_client_factory_owns_default_credential_across_restarts() -> None:
+    first_credential = MagicMock()
+    first_credential.close = AsyncMock()
+    second_credential = MagicMock()
+    second_credential.close = AsyncMock()
+    first_client = MagicMock()
+    first_client.close = AsyncMock()
+    second_client = MagicMock()
+    second_client.close = AsyncMock()
+
+    with (
+        patch(
+            "azure.identity.aio.DefaultAzureCredential",
+            side_effect=(first_credential, second_credential),
+        ) as credential_type,
+        patch(
+            "azure.servicebus.aio.ServiceBusClient",
+            side_effect=(first_client, second_client),
+        ) as client_type,
+    ):
+        factory = build_client_factory(
+            None,
+            "example.servicebus.windows.net",
+            None,
+            {"retry_total": 7},
+        )
+        state = ServiceBusConnectionState(factory)
+
+        await state.connect()
+        await state.disconnect()
+        await state.connect()
+        await state.disconnect()
+
+    assert credential_type.call_count == 2
+    first_credential.close.assert_awaited_once()
+    second_credential.close.assert_awaited_once()
+    first_client.close.assert_awaited_once()
+    second_client.close.assert_awaited_once()
+    assert client_type.call_args_list == [
+        call(
+            fully_qualified_namespace="example.servicebus.windows.net",
+            credential=first_credential,
+            retry_total=7,
+        ),
+        call(
+            fully_qualified_namespace="example.servicebus.windows.net",
+            credential=second_credential,
+            retry_total=7,
+        ),
+    ]
+
+
+@pytest.mark.asyncio()
+async def test_client_factory_does_not_close_caller_credential() -> None:
+    credential = MagicMock()
+    credential.close = AsyncMock()
+    client = MagicMock()
+    client.close = AsyncMock()
+
+    with patch("azure.servicebus.aio.ServiceBusClient", return_value=client):
+        state = ServiceBusConnectionState(
+            build_client_factory(
+                None,
+                "example.servicebus.windows.net",
+                credential,
+                {},
+            )
+        )
+        await state.connect()
+        await state.disconnect()
+
+    credential.close.assert_not_awaited()
 
 
 def test_router_config_has_no_connection() -> None:

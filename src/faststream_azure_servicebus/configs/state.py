@@ -28,6 +28,53 @@ class _SenderEntry:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
+class _ClosableClientFactory:
+    async def close(self) -> None:
+        raise NotImplementedError
+
+
+class _DefaultAzureCredentialClientFactory(_ClosableClientFactory):
+    """Create one owned credential per client lifecycle."""
+
+    def __init__(
+        self,
+        fully_qualified_namespace: str,
+        options: dict[str, Any],
+    ) -> None:
+        try:
+            from azure.identity.aio import DefaultAzureCredential
+        except ImportError as exc:
+            msg = (
+                "Managed identity requires azure-identity. Install "
+                "`faststream-azure-servicebus[identity]`."
+            )
+            raise ImportError(msg) from exc
+
+        self._credential_type = DefaultAzureCredential
+        self._fully_qualified_namespace = fully_qualified_namespace
+        self._options = options
+        self._credential: Any = None
+
+    def __call__(self) -> "ServiceBusClient":
+        from azure.servicebus.aio import ServiceBusClient
+
+        self._credential = self._credential_type()
+        return ServiceBusClient(
+            fully_qualified_namespace=self._fully_qualified_namespace,
+            credential=self._credential,
+            **self._options,
+        )
+
+    async def close(self) -> None:
+        if self._credential is None:
+            return
+
+        try:
+            await self._credential.close()
+        finally:
+            self._credential = None
+
+
 class ServiceBusConnectionState:
     """Owns the `ServiceBusClient` and the senders derived from it."""
 
@@ -79,6 +126,10 @@ class ServiceBusConnectionState:
         if self._client is not None:
             with suppress(Exception):
                 await self._client.close()
+
+        if isinstance(self._client_factory, _ClosableClientFactory):
+            with suppress(Exception):
+                await self._client_factory.close()
 
         self._client = None
         self._connected = False
@@ -172,12 +223,15 @@ def build_client_factory(
 
         return from_connection_string
 
-    if fully_qualified_namespace is None or credential is None:
-        msg = (
-            "Provide either a connection string, or both "
-            "`fully_qualified_namespace` and `credential`."
-        )
+    if fully_qualified_namespace is None:
+        msg = "Provide either a connection string or `fully_qualified_namespace`."
         raise IncorrectState(msg)
+
+    if credential is None:
+        return _DefaultAzureCredentialClientFactory(
+            fully_qualified_namespace,
+            options,
+        )
 
     def from_credential() -> ServiceBusClient:
         return ServiceBusClient(

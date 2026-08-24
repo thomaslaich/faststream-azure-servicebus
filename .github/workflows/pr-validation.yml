@@ -100,3 +100,14 @@ jobs:
           path: coverage
           merge-multiple: true
       - run: uv run just coverage-ci
+  validate:
+    if: always() && github.event.pull_request.draft == false
+    needs: [lint, test-offline, test-connected, coverage]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify required jobs succeeded
+        run: |
+          test "${{ needs.lint.result }}" = "success"
+          test "${{ needs.test-offline.result }}" = "success"
+          test "${{ needs.test-connected.result }}" = "success"
+          test "${{ needs.coverage.result }}" = "success"

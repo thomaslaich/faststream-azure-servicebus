@@ -9,6 +9,10 @@ https://github.com/ag2ai/faststream/issues/822
 
 ## Quickstart
 
+```bash
+uv add faststream-azure-servicebus
+```
+
 ### Publish and consume
 
 ```python
@@ -35,6 +39,23 @@ async def publish() -> None:
     await orders.publish({"id": 1})
     await broker.publish({"kind": "created"}, topic="events")
 ```
+
+For passwordless Azure authentication, install the identity extra and provide only
+the namespace. The broker owns the resulting `DefaultAzureCredential` and closes it
+on shutdown:
+
+```bash
+uv add "faststream-azure-servicebus[identity]"
+```
+
+```python
+broker = ServiceBusBroker(
+    fully_qualified_namespace="<namespace>.servicebus.windows.net",
+)
+```
+
+Pass `credential=` explicitly instead when its lifecycle is shared; caller-provided
+credentials remain caller-owned.
 
 ### Request and reply
 
