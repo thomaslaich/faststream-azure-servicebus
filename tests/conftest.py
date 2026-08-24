@@ -10,6 +10,10 @@ import pytest
 import pytest_asyncio
 from azure.servicebus import ServiceBusSubQueue
 from azure.servicebus.aio import ServiceBusClient
+from azure.servicebus.exceptions import (
+    MessagingEntityNotFoundError,
+    ServiceBusConnectionError,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterator
@@ -26,10 +30,49 @@ QUEUE_COUNT = 24
 SHORT_LOCK_QUEUE_COUNT = 4
 TOPIC_COUNT = 6
 SUBSCRIPTIONS_PER_TOPIC = 2
+ENTITY_READY_TIMEOUT = 60
 
 
 def connection_string() -> str:
     return os.environ.get("SERVICEBUS_CONNECTION_STRING", EMULATOR_CONNECTION_STRING)
+
+
+async def _wait_for_entity_pool() -> None:
+    """Wait until the emulator's final configured entity is queryable.
+
+    The emulator health endpoint becomes ready before its asynchronous entity
+    sync always finishes. Since entities are created in config order, opening
+    the last subscription proves the complete queue/topic pool is available.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + ENTITY_READY_TIMEOUT
+
+    while True:
+        client = ServiceBusClient.from_connection_string(connection_string())
+        try:
+            async with client, client.get_subscription_receiver(
+                topic_name=f"test-topic-{TOPIC_COUNT - 1:02d}",
+                subscription_name=f"sub-{SUBSCRIPTIONS_PER_TOPIC - 1}",
+                max_wait_time=1,
+            ) as receiver:
+                await receiver.peek_messages(max_message_count=1)
+        except (MessagingEntityNotFoundError, ServiceBusConnectionError):
+            if loop.time() >= deadline:
+                raise
+            await asyncio.sleep(0.5)
+        else:
+            return
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
+async def emulator_entities_ready(
+    request: pytest.FixtureRequest,
+) -> AsyncGenerator[None, None]:
+    """Block connected workers until all fixed emulator entities exist."""
+    if any(item.get_closest_marker("connected") for item in request.session.items):
+        await _wait_for_entity_pool()
+
+    yield
 
 
 def _worker_slice(total: int, offset: int = 0) -> list[str]:

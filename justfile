@@ -46,7 +46,7 @@
 
 # collect offline coverage in CI without producing a per-job report
 @test-offline-ci *args:
-    pytest -m "not connected" --cov --cov-report= {{ args }}
+    pytest -m "not connected" --cov --cov-report= --cov-fail-under=0 {{ args }}
 
 # enforce the coverage gate using only the offline suite
 [group('test')]
@@ -60,7 +60,7 @@
 
 # collect connected coverage in CI without producing a per-job report
 @test-connected-ci *args:
-    pytest -m connected -n 2 --cov --cov-report= {{ args }}
+    pytest -m connected -n 2 --cov --cov-report= --cov-fail-under=0 {{ args }}
 
 @coverage-ci:
     coverage combine coverage
