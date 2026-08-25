@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
+from azure.servicebus import ServiceBusMessage as AzureServiceBusMessage
 from azure.servicebus.amqp import AmqpMessageBodyType
 from azure.servicebus.exceptions import MessageAlreadySettled
 from faststream.exceptions import IncorrectState, SetupError
@@ -26,7 +27,11 @@ from faststream_azure_servicebus.configs import (
     build_client_factory,
 )
 from faststream_azure_servicebus.message import ServiceBusMessage
-from faststream_azure_servicebus.parser import extract_body, normalize_headers
+from faststream_azure_servicebus.parser import (
+    ServiceBusParser,
+    extract_body,
+    normalize_headers,
+)
 from faststream_azure_servicebus.publisher import reply as reply_module
 from faststream_azure_servicebus.publisher.producer import ServiceBusProducer
 from faststream_azure_servicebus.publisher.reply import ServiceBusReplyReceiver
@@ -112,6 +117,25 @@ async def test_publisher_uses_defaults_and_allows_call_overrides() -> None:
     assert command.headers == {"source": "call", "default": True}
     assert command.subject == "event.created"
     assert command.correlation_id == "correlation-id"
+
+
+@pytest.mark.asyncio()
+async def test_raw_message_receives_command_headers() -> None:
+    message = AzureServiceBusMessage(
+        b"body",
+        application_properties={"existing": "original"},
+    )
+
+    encoded = await ServiceBusParser.encode_message(
+        message,
+        headers={"existing": "overridden", "traceparent": "00-trace-parent"},
+    )
+
+    assert encoded is message
+    assert message.application_properties == {
+        "existing": "overridden",
+        "traceparent": "00-trace-parent",
+    }
 
 
 def test_publisher_decorator_contributes_asyncapi_payload() -> None:

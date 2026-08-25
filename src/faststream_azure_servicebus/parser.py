@@ -147,6 +147,9 @@ class ServiceBusParser:
     ) -> AzureServiceBusMessage:
         """Build an outgoing Service Bus message."""
         if isinstance(message, AzureServiceBusMessage):
+            properties = dict(message.application_properties or {})
+            properties.update(headers or {})
+            message.application_properties = properties
             return message
 
         body, content_type = await (codec or DefaultCodec()).encode(message, serializer)
