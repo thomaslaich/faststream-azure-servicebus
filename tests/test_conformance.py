@@ -10,6 +10,7 @@ from faststream_azure_servicebus import (
     TestServiceBusBroker,
 )
 from faststream_azure_servicebus.annotations import ServiceBusMessage
+from faststream_azure_servicebus.schemas import QueueDestination, SubscriptionDestination
 
 
 @pytest.mark.asyncio()
@@ -97,6 +98,36 @@ async def test_broker_middleware_wraps_publish_and_consume() -> None:
         "consume-after",
         "publish-after",
     ]
+
+
+@pytest.mark.asyncio()
+@pytest.mark.parametrize(
+    ("subscriber_kwargs", "publish_kwargs", "expected"),
+    (
+        ({"queue": "input"}, {"queue": "input"}, QueueDestination("input")),
+        (
+            {"topic": "events", "subscription": "worker"},
+            {"topic": "events"},
+            SubscriptionDestination("events", "worker"),
+        ),
+    ),
+)
+async def test_consumed_message_carries_destination(
+    subscriber_kwargs: dict[str, str],
+    publish_kwargs: dict[str, str],
+    expected: QueueDestination | SubscriptionDestination,
+) -> None:
+    broker = ServiceBusBroker("Endpoint=sb://unused")
+    destinations: list[object] = []
+
+    @broker.subscriber(**subscriber_kwargs)
+    async def handler(message: ServiceBusMessage) -> None:
+        destinations.append(message.destination)
+
+    async with TestServiceBusBroker(broker):
+        await broker.publish({}, **publish_kwargs)
+
+    assert destinations == [expected]
 
 
 @pytest.mark.asyncio()
