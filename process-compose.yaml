@@ -54,6 +54,8 @@ processes:
     availability:
       restart: "no"
       exit_on_end: true
+    shutdown:
+      signal: 2
     depends_on:
       observability-stack:
         condition: process_healthy

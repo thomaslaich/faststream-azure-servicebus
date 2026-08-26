@@ -94,7 +94,11 @@ async def main() -> None:
         print(f"publishing: {payload}")
         await publisher.publish(payload)
         await asyncio.wait_for(consumed.wait(), timeout=15)
+        tracer_provider.force_flush()
+        meter_provider.force_flush()
         print(f"traces and metrics: {GRAFANA_URL}/explore")
+        print("Press Ctrl+C to stop the example and its local services.")
+        await asyncio.Event().wait()
     finally:
         await broker.stop()
         tracer_provider.shutdown()

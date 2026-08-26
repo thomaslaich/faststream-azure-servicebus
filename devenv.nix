@@ -15,6 +15,7 @@
   env = {
     PC_CONFIG_FILES = "${config.devenv.root}/process-compose.yaml";
     PC_SOCKET_PATH = "${config.devenv.runtime}/process-compose.sock";
+    PROC_COMP_CONFIG = config.devenv.root;
   };
 
   languages.python = {

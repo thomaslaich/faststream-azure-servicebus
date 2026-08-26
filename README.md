@@ -147,7 +147,8 @@ The repository includes runnable
 `just example` also starts a local
 [`grafana/otel-lgtm`](https://hub.docker.com/r/grafana/otel-lgtm) stack and exports
 the example's traces and metrics over OTLP. Open Grafana at
-<http://localhost:3000/explore> after the example starts.
+<http://localhost:3000/explore> after the example starts, then press `Ctrl+C` to
+stop the example and tear down its local services.
 
 ## Features
 
