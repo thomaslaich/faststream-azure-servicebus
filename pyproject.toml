@@ -36,6 +36,8 @@ dependencies = ["faststream>=0.7.0,<0.8.0", "azure-servicebus>=7.14.0,<8.0.0"]
 
 [project.optional-dependencies]
 identity = ["azure-identity>=1.19.0"]
+otel = ["faststream[otel]>=0.7.0,<0.8.0"]
+prometheus = ["faststream[prometheus]>=0.7.0,<0.8.0"]
 
 [project.urls]
 Homepage = "https://github.com/thomaslaich/faststream-azure-servicebus"
@@ -54,7 +56,11 @@ style = "pep440"
 
 [dependency-groups]
 lint = ["ruff==0.14.14", "ty==0.0.72"]
-examples = ["msgpack>=1.0.0,<2.0.0"]
+examples = [
+  "msgpack>=1.0.0,<2.0.0",
+  "opentelemetry-exporter-otlp-proto-grpc>=1.24.0,<2.0.0",
+  "opentelemetry-sdk>=1.24.0,<2.0.0",
+]
 
 test = [
   "pytest==9.0.3",
@@ -65,6 +71,8 @@ test = [
   "pytest-rerunfailures>=15.1",
   "dirty-equals==0.11",
   "azure-identity>=1.19.0",
+  "opentelemetry-sdk>=1.24.0,<2.0.0",
+  "prometheus-client>=0.20.0,<0.30.0",
 ]
 
 dev = [

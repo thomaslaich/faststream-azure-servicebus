@@ -27,14 +27,37 @@ processes:
     depends_on:
       servicebus-emulator:
         condition: process_healthy
+  observability-stack:
+    command: docker compose --profile observability up -d otel-lgtm
+    is_daemon: true
+    launch_timeout_seconds: 10
+    availability:
+      restart: "no"
+    readiness_probe:
+      http_get:
+        host: 127.0.0.1
+        port: 3000
+        path: /api/health
+      initial_delay_seconds: 2
+      period_seconds: 2
+      timeout_seconds: 2
+      failure_threshold: 90
+    shutdown:
+      command: docker compose --profile observability rm --stop --force otel-lgtm
+      timeout_seconds: 30
+    depends_on:
+      servicebus-emulator:
+        condition: process_healthy
   example:
     command: python examples/basic.py
     disabled: true
     availability:
       restart: "no"
       exit_on_end: true
+    shutdown:
+      signal: 2
     depends_on:
-      servicebus-emulator:
+      observability-stack:
         condition: process_healthy
   example-request-reply:
     command: python examples/request_reply.py

@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from azure.servicebus.aio import ServiceBusReceiver
 
     from faststream_azure_servicebus.configs.broker import ServiceBusBrokerConfig
+    from faststream_azure_servicebus.schemas import Destination
 
 
 # Settling a message whose lock has expired is not an application error: the broker
@@ -40,8 +41,13 @@ class ServiceBusMessage(StreamMessage[ServiceBusReceivedMessage]):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
+        self.destination: Destination | None = None
         self._receiver: ServiceBusReceiver | None = None
         self._logger_state: Any = None
+
+    def _attach_destination(self, destination: "Destination") -> None:
+        """Record the queue or subscription that delivered the message."""
+        self.destination = destination
 
     def _attach_receiver(
         self,

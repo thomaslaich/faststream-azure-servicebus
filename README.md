@@ -91,10 +91,64 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
+### Observability
+
+Install the OpenTelemetry extra and add the Service Bus middleware to the broker:
+
+```bash
+uv add "faststream-azure-servicebus[otel]"
+```
+
+```python
+from faststream_azure_servicebus import ServiceBusBroker
+from faststream_azure_servicebus.opentelemetry import ServiceBusTelemetryMiddleware
+
+broker = ServiceBusBroker(
+    "Endpoint=sb://<namespace>.servicebus.windows.net/;...",
+    middlewares=(ServiceBusTelemetryMiddleware(),),
+)
+```
+
+The middleware uses the global OpenTelemetry tracer and meter providers by default.
+It propagates W3C trace context and baggage in Service Bus application properties and
+emits FastStream's standard `messaging.publish.*` and `messaging.process.*` spans and
+metrics with `messaging.system=servicebus`. Explicit tracer, meter, or meter providers
+can be passed to the middleware instead.
+
+For native Prometheus metrics, install the Prometheus extra and provide a collector
+registry:
+
+```bash
+uv add "faststream-azure-servicebus[prometheus]"
+```
+
+```python
+from prometheus_client import REGISTRY
+
+from faststream_azure_servicebus import ServiceBusBroker
+from faststream_azure_servicebus.prometheus import ServiceBusPrometheusMiddleware
+
+broker = ServiceBusBroker(
+    "Endpoint=sb://<namespace>.servicebus.windows.net/;...",
+    middlewares=(
+        ServiceBusPrometheusMiddleware(registry=REGISTRY, app_name="orders"),
+    ),
+)
+```
+
+This emits FastStream's standard publish, receive, processing, duration, size,
+in-process, and exception metrics. Destination and status labels distinguish queues,
+topic subscriptions, publish success or failure, and ack/nack/reject outcomes.
+
 The repository includes runnable
-[`publish/consume`](examples/basic.py) and
+[`publish/consume with OpenTelemetry`](examples/basic.py) and
 [`request/reply`](examples/request_reply.py), and
 [`MessagePack`](examples/messagepack.py) examples for the local emulator.
+`just example` also starts a local
+[`grafana/otel-lgtm`](https://hub.docker.com/r/grafana/otel-lgtm) stack and exports
+the example's traces and metrics over OTLP. Open Grafana at
+<http://localhost:3000/explore> after the example starts, then press `Ctrl+C` to
+stop the example and tear down its local services.
 
 ## Features
 
@@ -110,11 +164,13 @@ Supported today:
 - Batch publishing
 - Message time-to-live and scheduled enqueueing
 - Routers, publisher decorators, middleware, dependencies, and custom codecs
+- OpenTelemetry tracing, context propagation, and messaging metrics
+- Native Prometheus messaging metrics
 - AsyncAPI schemas
 - Offline application tests with `TestServiceBusBroker`
 
 Planned, not yet implemented: sessions, deferred-message retrieval, dead-letter queue
-consumption, the FastAPI plugin, and the OpenTelemetry and Prometheus providers.
+consumption, and the FastAPI plugin.
 
 ## Development
 

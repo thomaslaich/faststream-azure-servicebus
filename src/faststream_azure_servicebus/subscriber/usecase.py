@@ -59,7 +59,8 @@ class ServiceBusSubscriber(TasksMixin, SubscriberUsecase[ServiceBusReceivedMessa
         return self.config.destination.add_prefix(self._outer_config.prefix)
 
     def _attach_receiver(self, message: "ServiceBusMessage") -> None:
-        """Hand a parsed message the receiver that holds its lock."""
+        """Attach the source destination and the receiver holding the message lock."""
+        message._attach_destination(self.destination)
         if (
             self._receiver is not None
             and self.config.receive_mode is ServiceBusReceiveMode.PEEK_LOCK

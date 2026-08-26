@@ -1,4 +1,14 @@
 services:
+  otel-lgtm:
+    image: grafana/otel-lgtm@sha256:f1e548c20c99d2678744be9d90955c0ab208ecc273db2a7a0b5dc5673d0b57fd
+    profiles:
+      - observability
+    ports:
+      - "3000:3000"
+      - "4317:4317"
+      - "4318:4318"
+    security_opt:
+      - no-new-privileges:true
   servicebus:
     # Multi-architecture manifest digest; update deliberately after running the
     # full connected suite against a newer emulator release.
