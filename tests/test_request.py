@@ -9,7 +9,6 @@ from faststream.exceptions import IncorrectState
 
 from faststream_azure_servicebus import ServiceBusBroker
 from faststream_azure_servicebus.annotations import ServiceBusMessage
-from tests.conftest import connection_string
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -22,8 +21,10 @@ TIMEOUT = 10
 
 
 @pytest_asyncio.fixture
-async def request_broker() -> AsyncGenerator[ServiceBusBroker, None]:
-    broker = ServiceBusBroker(connection_string())
+async def request_broker(
+    servicebus_connection_string: str,
+) -> AsyncGenerator[ServiceBusBroker, None]:
+    broker = ServiceBusBroker(servicebus_connection_string)
     async with broker:
         yield broker
 

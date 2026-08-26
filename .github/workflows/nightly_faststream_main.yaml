@@ -26,9 +26,4 @@ jobs:
       - name: Install faststream from main
         run: uv pip install --reinstall "faststream @ git+https://github.com/ag2ai/faststream.git@main"
       - run: uv run --no-sync just test-offline-ci -vv
-      - name: Start the Service Bus emulator
-        run: docker compose up -d --wait
       - run: uv run --no-sync just test-connected-ci -vv
-      - name: Dump emulator logs on failure
-        if: failure()
-        run: docker compose logs servicebus

@@ -77,21 +77,3 @@ processes:
     depends_on:
       servicebus-emulator:
         condition: process_healthy
-  tests:
-    command: pytest -n 2
-    disabled: true
-    availability:
-      restart: "no"
-      exit_on_end: true
-    depends_on:
-      servicebus-emulator:
-        condition: process_healthy
-  test-coverage:
-    command: pytest -n 2 --cov --cov-report=term --cov-report=html
-    disabled: true
-    availability:
-      restart: "no"
-      exit_on_end: true
-    depends_on:
-      servicebus-emulator:
-        condition: process_healthy

@@ -31,8 +31,8 @@ list recipes. Key ones:
 | `just up` / `just down` | Start / stop the Service Bus emulator stack. |
 | `just example` | Publish and consume one message against the emulator. |
 | `just test-offline` | Run the fast suite without Docker or Azure. |
-| `just test-connected` | Run only the emulator-backed suite. |
-| `just test` | Run the full suite against the emulator with xdist. |
+| `just test-connected` | Run the emulator-backed suite with Testcontainers. |
+| `just test` | Run the full suite with a Testcontainers emulator and xdist. |
 | `just test-cov` | Run tests with a local coverage report. |
 | `just test-offline-ci` / `just test-connected-ci` | CI coverage recipes without terminal reports. |
 | `just build` | Build the Python distribution with `uv build`. |
@@ -53,18 +53,19 @@ manually with `devenv shell` before invoking the recipes.
 - `schemas/` - destination models for queues and topic subscriptions.
 - `tests/` - connected tests against the Service Bus emulator or namespace.
 - `tests/infra/servicebus-config.json` - fixed emulator entity pool.
-- `process-compose.yaml` - local emulator, test, and example process graph.
+- `process-compose.yaml` - local emulator and example process graph.
 - `.github/workflows/` - PR, main-branch, and nightly FastStream-main checks.
 
 ## Conventions And Gotchas
 
-- Tests are connected tests. `just test` manages the local emulator through the
-  process-compose graph. To target a real namespace instead, set
-  `SERVICEBUS_CONNECTION_STRING` and invoke pytest directly.
+- Connected tests manage the local emulator and SQL Edge through session-scoped
+  Testcontainers infrastructure. The xdist controller owns one stack and shares
+  its connection string with both workers. To target a real namespace instead,
+  set `SERVICEBUS_CONNECTION_STRING`.
 - Process-compose supervises the local process graph; Docker Compose remains the
   two-container implementation behind the emulator process.
-- Local `just test` and `just example` recipes start opt-in processes that depend
-  on the emulator readiness probe and tear down the stack when they exit.
+- Local example recipes use opt-in processes that depend on the emulator
+  readiness probe and tear down the stack when they exit.
 - The emulator cannot create entities at runtime. Tests lease names from the
   fixed pool in `tests/infra/servicebus-config.json`; regenerate it with
   `just gen-config` after changing queue/topic counts.

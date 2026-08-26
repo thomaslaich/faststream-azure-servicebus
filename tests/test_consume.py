@@ -14,7 +14,6 @@ from faststream_azure_servicebus import (
     ServiceBusRoute,
     ServiceBusRouter,
 )
-from tests.conftest import connection_string
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -41,8 +40,10 @@ def assert_no_unexpected_settlement_logs(
 
 
 @pytest_asyncio.fixture
-async def broker() -> AsyncGenerator[ServiceBusBroker, None]:
-    broker = ServiceBusBroker(connection_string())
+async def broker(
+    servicebus_connection_string: str,
+) -> AsyncGenerator[ServiceBusBroker, None]:
+    broker = ServiceBusBroker(servicebus_connection_string)
     try:
         yield broker
     finally:
