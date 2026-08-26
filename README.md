@@ -141,9 +141,13 @@ in-process, and exception metrics. Destination and status labels distinguish que
 topic subscriptions, publish success or failure, and ack/nack/reject outcomes.
 
 The repository includes runnable
-[`publish/consume`](examples/basic.py) and
+[`publish/consume with OpenTelemetry`](examples/basic.py) and
 [`request/reply`](examples/request_reply.py), and
 [`MessagePack`](examples/messagepack.py) examples for the local emulator.
+`just example` also starts a local
+[`grafana/otel-lgtm`](https://hub.docker.com/r/grafana/otel-lgtm) stack and exports
+the example's traces and metrics over OTLP. Open Grafana at
+<http://localhost:3000/explore> after the example starts.
 
 ## Features
 
