@@ -200,13 +200,19 @@ just check                   # treefmt, ruff check, ty
 
 `just --list` shows the rest.
 
-The emulator, tests, and example form a process graph in
-[`process-compose.yaml`](process-compose.yaml). The test and example processes
-depend on the emulator's HTTP readiness probe and tear the Compose stack down
+Connected tests use Testcontainers to start one Service Bus emulator and SQL Edge
+stack per pytest session. With xdist, the controller shares that stack with both
+workers; pytest waits for the configured entity pool and removes the containers
+when the session ends. Set `SERVICEBUS_CONNECTION_STRING` to test against an
+existing dedicated namespace instead. The `just` recipes pass the required
+`--servicebus-emulator` option when running with xdist.
+
+The examples form a process graph in [`process-compose.yaml`](process-compose.yaml).
+They depend on the emulator's HTTP readiness probe and tear the Compose stack down
 when they exit. `just up` and `just down` instead manage a persistent background
-instance; `just logs` attaches to its TUI and container logs. Run
-`process-compose up` directly for the full foreground TUI. The runnable example
-sources are in [`examples/basic.py`](examples/basic.py) and
+instance; `just logs` attaches to its TUI and container logs. Run `process-compose
+up` directly for the full foreground TUI. The runnable example sources are in
+[`examples/basic.py`](examples/basic.py) and
 [`examples/request_reply.py`](examples/request_reply.py). The custom codec example is
 in [`examples/messagepack.py`](examples/messagepack.py).
 

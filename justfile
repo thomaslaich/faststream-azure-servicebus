@@ -56,11 +56,11 @@
 # run only the emulator-backed tests
 [group('test')]
 @test-connected *args:
-    PYTEST_ADDOPTS={{ quote("-m connected " + args) }} process-compose --no-server up --tui=false tests
+    pytest --servicebus-emulator -m connected -n 2 {{ args }}
 
 # collect connected coverage in CI without producing a per-job report
 @test-connected-ci *args:
-    pytest -m connected -n 2 --cov --cov-report= --cov-fail-under=0 {{ args }}
+    pytest --servicebus-emulator -m connected -n 2 --cov --cov-report= --cov-fail-under=0 {{ args }}
 
 @coverage-ci:
     coverage combine coverage
@@ -107,12 +107,12 @@
 # connections, and each worker holds several.
 [group('test')]
 @test *args:
-    PYTEST_ADDOPTS={{ quote(args) }} process-compose --no-server up --tui=false tests
+    pytest --servicebus-emulator -n 2 {{ args }}
 
 # run the tests with a coverage report
 [group('test')]
 @test-cov:
-    process-compose --no-server up --tui=false test-coverage
+    pytest --servicebus-emulator -n 2 --cov --cov-report=term --cov-report=html
 
 # Smoke test the built wheel in an isolated environment.
 [group('build & publish')]

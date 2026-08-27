@@ -8,7 +8,7 @@ import pytest
 import pytest_asyncio
 
 from faststream_azure_servicebus import ServiceBusBroker
-from tests.conftest import SUBSCRIPTIONS_PER_TOPIC, connection_string
+from tests.conftest import SUBSCRIPTIONS_PER_TOPIC
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -20,8 +20,10 @@ pytestmark = [pytest.mark.asyncio, pytest.mark.connected]
 
 
 @pytest_asyncio.fixture
-async def broker() -> AsyncGenerator[ServiceBusBroker, None]:
-    broker = ServiceBusBroker(connection_string())
+async def broker(
+    servicebus_connection_string: str,
+) -> AsyncGenerator[ServiceBusBroker, None]:
+    broker = ServiceBusBroker(servicebus_connection_string)
     async with broker:
         yield broker
 
@@ -227,8 +229,8 @@ async def test_ping(broker: ServiceBusBroker, queue: str) -> None:
     assert await broker.ping(timeout=10) is True
 
 
-async def test_ping_without_a_connection() -> None:
-    broker = ServiceBusBroker(connection_string())
+async def test_ping_without_a_connection(servicebus_connection_string: str) -> None:
+    broker = ServiceBusBroker(servicebus_connection_string)
 
     assert await broker.ping(timeout=1) is False
 
