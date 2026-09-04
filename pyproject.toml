@@ -74,6 +74,7 @@ test = [
   "azure-identity>=1.19.0",
   "opentelemetry-sdk>=1.24.0,<2.0.0",
   "prometheus-client>=0.20.0,<0.30.0",
+  "faststream-fastapi>=1.2.1,<2.0.0",
 ]
 
 dev = [

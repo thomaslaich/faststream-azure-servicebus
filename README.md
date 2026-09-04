@@ -57,6 +57,56 @@ broker = ServiceBusBroker(
 Pass `credential=` explicitly instead when its lifecycle is shared; caller-provided
 credentials remain caller-owned.
 
+### FastAPI
+
+Install the broker and FastStream's FastAPI integration:
+
+```bash
+uv add faststream-azure-servicebus faststream-fastapi
+```
+
+Define subscribers on the regular broker, then wrap your FastAPI application after
+all subscribers have been registered:
+
+```python
+from typing import Annotated
+
+from fastapi import Depends, FastAPI
+from faststream_fastapi import FastStreamAPI
+
+from faststream_azure_servicebus import ServiceBusBroker
+
+broker = ServiceBusBroker("Endpoint=sb://<namespace>.servicebus.windows.net/;...")
+api = FastAPI()
+
+
+def source() -> str:
+    return "fastapi"
+
+
+@broker.subscriber(queue="orders")
+async def handle_order(
+    body: dict,
+    dependency: Annotated[str, Depends(source)],
+) -> None:
+    print(dependency, body)
+
+
+app = FastStreamAPI(broker, application=api, asyncapi_path="/asyncapi")
+```
+
+The wrapper starts and stops the broker with the ASGI lifespan and lets message
+handlers use FastAPI dependencies and dependency overrides. See the runnable
+[`FastAPI application`](examples/fastapi_app.py), which also publishes from an HTTP
+endpoint.
+
+With the emulator running, serve it using any ASGI server, for example:
+
+```bash
+just up
+uv run --with uvicorn uvicorn examples.fastapi_app:app
+```
+
 ### Request and reply
 
 Request/reply requires a pre-existing reply queue owned by the caller:
@@ -166,11 +216,12 @@ Supported today:
 - Routers, publisher decorators, middleware, dependencies, and custom codecs
 - OpenTelemetry tracing, context propagation, and messaging metrics
 - Native Prometheus messaging metrics
+- FastAPI lifespan and dependency-injection integration
 - AsyncAPI schemas
 - Offline application tests with `TestServiceBusBroker`
 
 Planned, not yet implemented: sessions, deferred-message retrieval, dead-letter queue
-consumption, and the FastAPI plugin.
+consumption.
 
 ## Development
 
