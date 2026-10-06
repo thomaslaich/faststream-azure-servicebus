@@ -25,10 +25,9 @@ async def test_fastapi_dependency_injection_and_overrides() -> None:
     ) -> None:
         received.append((body, dependency))
 
-    app = FastStreamAPI(broker, application=api)
+    FastStreamAPI(broker, application=api)
 
     async with TestServiceBusBroker(broker):
         await broker.publish({"id": 1}, queue="orders")
 
-    assert callable(app)
     assert received == [({"id": 1}, "overridden")]

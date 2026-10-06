@@ -86,7 +86,7 @@ def source() -> str:
 
 @broker.subscriber(queue="orders")
 async def handle_order(
-    body: dict,
+    body: dict[str, int],
     dependency: Annotated[str, Depends(source)],
 ) -> None:
     print(dependency, body)
