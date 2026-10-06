@@ -2,6 +2,7 @@ from faststream._internal.endpoint.publisher import PublisherSpecification
 from faststream.specification.asyncapi.utils import resolve_payloads
 from faststream.specification.schema import Message, Operation, PublisherSpec
 
+from faststream_azure_servicebus._compat import spec_address
 from faststream_azure_servicebus.configs import ServiceBusBrokerConfig
 
 from .config import ServiceBusPublisherSpecificationConfig
@@ -38,5 +39,6 @@ class ServiceBusPublisherSpecification(
                 # AsyncAPI has no Azure Service Bus binding. As with subscribers,
                 # the prefixed entity path is represented by the channel name.
                 bindings=None,
+                **spec_address(self.entity_path),
             ),
         }
