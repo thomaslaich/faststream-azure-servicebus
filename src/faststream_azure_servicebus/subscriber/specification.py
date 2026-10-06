@@ -4,6 +4,7 @@ from faststream._internal.endpoint.subscriber import SubscriberSpecification
 from faststream.specification.asyncapi.utils import resolve_payloads
 from faststream.specification.schema import Message, Operation, SubscriberSpec
 
+from faststream_azure_servicebus._compat import spec_address
 from faststream_azure_servicebus.configs import ServiceBusBrokerConfig
 
 from .config import ServiceBusSubscriberSpecificationConfig
@@ -58,5 +59,6 @@ class ServiceBusSubscriberSpecification(
                 # produce a document no tool understands. The entity path is
                 # carried by the channel name instead.
                 bindings=None,
+                **spec_address(self.entity_path),
             ),
         }
